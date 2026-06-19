@@ -1,0 +1,11 @@
+# Core graph/math
+numpy>=1.24
+scipy>=1.10
+networkx>=3.0
+
+# LLM APIs
+openai>=1.0
+google-genai>=1.0
+
+# Utilities
+tqdm>=4.60
