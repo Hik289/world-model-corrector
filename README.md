@@ -1,8 +1,39 @@
 # WM-SAR: Subgraph Amplification Repair for Failed Agent Rollouts
 
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/quickstart-synthetic%20rollout-2ea44f" alt="Quickstart"></a>
+  <a href="#intuition"><img src="https://img.shields.io/badge/intuition-error%20amplification-7c3aed" alt="Intuition"></a>
+  <a href="#running-experiments"><img src="https://img.shields.io/badge/experiments-non--LLM%20%7C%20LLM-2563eb" alt="Experiments"></a>
+  <a href="#api-reference"><img src="https://img.shields.io/badge/API-WMSARConfig-f97316" alt="API reference"></a>
+  <a href="#citation"><img src="https://img.shields.io/badge/citation-under%20review-64748b" alt="Citation"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.13.7-blue" alt="Python 3.13.7">
+  <img src="https://img.shields.io/badge/API%20keys-optional%20for%20LLM%20experiments-lightgrey" alt="API keys optional">
+  <img src="https://img.shields.io/badge/method-subgraph%20repair-lightgrey" alt="Subgraph repair">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
+</p>
+
+## Intuition
+
+<p align="center">
+  <img src="figures/intuition.png" width="900" alt="Why engineering repair fails to suppress error amplification">
+</p>
+
+Pointwise and shallow local repairs can fix visible symptom nodes while leaving the amplification path intact. WM-SAR targets the connected subgraph that drives error growth, suppressing the spectral amplification term rather than only patching local symptoms.
+
 ## Overview
 
 WM-SAR is a graph-based framework for diagnosing and repairing failed agent and world-model rollouts. It converts a failed rollout into a *failure graph*, computes the Graph Error Amplification Factor (GEAF) via spectral analysis to identify which region of the graph amplifies errors most strongly, and extracts a connected subgraph repair region using a seed–grow–prune algorithm — enabling simultaneous, context-efficient repair of all affected steps rather than expensive pointwise scanning.
+
+## Highlights
+
+- Converts failed agent/world-model rollouts into directed failure graphs.
+- Computes GEAF with spectral/random-walk amplification scores.
+- Extracts compact connected repair regions with seed-grow-prune search.
+- Compares WM-SAR against greedy point, local k-hop, window repair, and LLM baselines.
+- Runs core simulation experiments without API keys; OpenAI/Gemini keys are needed only for optional LLM experiments.
 
 ## Requirements
 
@@ -91,23 +122,27 @@ All results are saved as JSON to `experiments/results/`.
 
 ## Repository Structure
 
-```
-wm_sar/
-├── __init__.py             # Package exports (WMSAR, WMSARConfig, run_all_baselines, ...)
-├── amplification.py        # GEAF spectral computations; random-walk amplification scores
-├── baselines.py            # All baseline methods + wm_sar() entry point
-├── benchmark_graphs.py     # Benchmark topology generators (SWE-bench, WebArena, AgentBench)
-├── data_generator.py       # Synthetic rollout generator (agent WM + parametric GWM)
-├── engineering_baselines.py# Structural baselines: greedy_point, window_repair, local_khop
-├── failure_graph.py        # Rollout → failure graph builder (nx.DiGraph)
-├── llm_baselines.py        # LLM-based baselines (Full-Graph-LLM, Greedy-Point-LLM, etc.)
-├── llm_client.py           # LLM API client (OpenAI / Gemini); reads keys from env vars
-├── metrics.py              # Recovery, CostNorm, IoU, rho_reduction metrics
-├── region_extractor.py     # WMSAR class with WMSARConfig; ablation flags
-├── repair_executor.py      # Repair simulation + measurement
-├── act_text.py             # Text representation for LLM contexts
-├── agent_calling_tree.py   # Agent call-tree graph utilities
-└── text_scenarios.py       # Textual failure scenario generators
+```text
+.
+|-- figures/
+|   `-- intuition.png       # README intuition figure
+|-- experiments/            # Non-LLM, LLM, budget, benchmark, and ablation experiments
+|-- wm_sar/
+|   |-- __init__.py         # Package exports
+|   |-- amplification.py    # GEAF spectral computations
+|   |-- baselines.py        # Baseline methods + wm_sar() entry point
+|   |-- benchmark_graphs.py # Benchmark topology generators
+|   |-- data_generator.py   # Synthetic rollout generator
+|   |-- failure_graph.py    # Rollout-to-failure-graph builder
+|   |-- llm_baselines.py    # LLM-based repair baselines
+|   |-- llm_client.py       # OpenAI/Gemini client; reads env vars
+|   |-- metrics.py          # Recovery, CostNorm, IoU, rho_reduction metrics
+|   |-- region_extractor.py # WMSAR class and WMSARConfig
+|   |-- repair_executor.py  # Repair simulation and measurement
+|   |-- act_text.py         # Text representation for LLM contexts
+|   `-- text_scenarios.py   # Textual failure scenario generators
+|-- requirements.txt
+`-- README.md
 ```
 
 ## API Reference
