@@ -1,19 +1,36 @@
-# WM-SAR: Subgraph Amplification Repair for Failed Agent Rollouts
+# Repair the Amplifier, Not the Symptom
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/quickstart-synthetic%20rollout-2ea44f" alt="Quickstart"></a>
-  <a href="#intuition"><img src="https://img.shields.io/badge/intuition-error%20amplification-7c3aed" alt="Intuition"></a>
-  <a href="#running-experiments"><img src="https://img.shields.io/badge/experiments-non--LLM%20%7C%20LLM-2563eb" alt="Experiments"></a>
-  <a href="#api-reference"><img src="https://img.shields.io/badge/API-WMSARConfig-f97316" alt="API reference"></a>
-  <a href="#citation"><img src="https://img.shields.io/badge/citation-under%20review-64748b" alt="Citation"></a>
+  <strong>Stable World-Model Correction for Agent Rollouts</strong>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.13.7-blue" alt="Python 3.13.7">
-  <img src="https://img.shields.io/badge/API%20keys-optional%20for%20LLM%20experiments-lightgrey" alt="API keys optional">
-  <img src="https://img.shields.io/badge/method-subgraph%20repair-lightgrey" alt="Subgraph repair">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license">
+  <a href="https://arxiv.org/abs/2607.01767"><img src="https://img.shields.io/badge/arXiv-2607.01767-b31b1b.svg" alt="arXiv"></a>
+  <a href="https://arxiv.org/pdf/2607.01767"><img src="https://img.shields.io/badge/Paper-PDF-1f6feb.svg" alt="Paper PDF"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quickstart-synthetic%20rollout-2ea44f.svg" alt="Quickstart"></a>
+  <a href="#running-experiments"><img src="https://img.shields.io/badge/Experiments-non--LLM%20%7C%20LLM-2563eb.svg" alt="Experiments"></a>
+  <a href="#citation"><img src="https://img.shields.io/badge/Cite-BibTeX-64748b.svg" alt="Citation"></a>
 </p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.13%2B-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/API%20keys-optional%20for%20LLM%20experiments-lightgrey.svg" alt="API keys optional">
+  <img src="https://img.shields.io/badge/method-WM--SAR-7c3aed.svg" alt="WM-SAR">
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license">
+</p>
+
+<p align="center">
+  <strong>Xinyuan Song</strong> · <strong>Zekun Cai</strong>
+</p>
+
+Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplification Repair), a world-model corrector that repairs failed agent rollouts by targeting the causal subgraph that repeatedly amplifies error, rather than patching the most visible local symptom.
+
+## Paper
+
+**Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts**  
+Xinyuan Song and Zekun Cai. arXiv:2607.01767, 2026.
+
+Paper: [arXiv abstract](https://arxiv.org/abs/2607.01767) · [PDF](https://arxiv.org/pdf/2607.01767)
 
 ## Intuition
 
@@ -21,19 +38,19 @@
   <img src="figures/intuition.png" width="900" alt="Why engineering repair fails to suppress error amplification">
 </p>
 
-Pointwise and shallow local repairs can fix visible symptom nodes while leaving the amplification path intact. WM-SAR targets the connected subgraph that drives error growth, suppressing the spectral amplification term rather than only patching local symptoms.
+Pointwise and shallow local repairs can fix visible symptom nodes while leaving the amplification path intact. WM-SAR targets the connected causal subgraph that keeps re-amplifying error, reducing the graph-level amplification mechanism instead of only patching local symptoms.
 
 ## Overview
 
-WM-SAR is a graph-based framework for diagnosing and repairing failed agent and world-model rollouts. It converts a failed rollout into a *failure graph*, computes the Graph Error Amplification Factor (GEAF) via spectral analysis to identify which region of the graph amplifies errors most strongly, and extracts a connected subgraph repair region using a seed–grow–prune algorithm — enabling simultaneous, context-efficient repair of all affected steps rather than expensive pointwise scanning.
+Persistent agents fail inside large planning graphs, not only at isolated prediction nodes. WM-SAR is a graph-based framework for repairing those failed rollouts in place. It converts a failed rollout into a *failure graph*, computes a Graph Error Amplification Factor (GEAF) to identify where errors are repeatedly amplified, and extracts a compact connected repair region with a seed-grow-prune algorithm. The resulting context is small enough for realistic LLM repair calls while still covering the causal subgraph that drives the failure.
 
 ## Highlights
 
-- Converts failed agent/world-model rollouts into directed failure graphs.
-- Computes GEAF with spectral/random-walk amplification scores.
-- Extracts compact connected repair regions with seed-grow-prune search.
-- Compares WM-SAR against greedy point, local k-hop, window repair, and LLM baselines.
-- Runs core simulation experiments without API keys; OpenAI/Gemini keys are needed only for optional LLM experiments.
+- Converts failed agent and world-model rollouts into directed failure graphs.
+- Identifies error-amplifying regions with GEAF spectral/random-walk scores.
+- Extracts compact connected repair subgraphs with seed-grow-prune search.
+- Compares WM-SAR with greedy point repair, local k-hop repair, window repair, engineering correctors, and LLM baselines.
+- Runs core graph-simulation experiments without API keys; OpenAI/Gemini keys are needed only for optional LLM repair experiments.
 
 ## Requirements
 
@@ -205,16 +222,17 @@ G = agent_rollout_to_graph(rollout)
 
 ## Citation
 
-```
-@article{wmsar2025,
-  title   = {WM-SAR: Subgraph Amplification Repair for Failed Agent Rollouts},
-  author  = {Anonymous},
-  journal = {Under Review},
-  year    = {2025}
+```bibtex
+@misc{song2026repair,
+  title         = {Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts},
+  author        = {Xinyuan Song and Zekun Cai},
+  year          = {2026},
+  eprint        = {2607.01767},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2607.01767}
 }
 ```
-
-*Paper under review. Citation will be updated upon publication.*
 
 ## License
 
