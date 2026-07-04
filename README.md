@@ -35,7 +35,7 @@ Paper: [arXiv abstract](https://arxiv.org/abs/2607.01767) · [PDF](https://arxiv
 ## Pipeline
 
 <p align="center">
-  <img src="figures/pipeline.png" width="900" alt="Three repair strategies for failed agent rollouts">
+  <img src="figures/pipeline.png" width="640" alt="Three repair strategies for failed agent rollouts">
 </p>
 
 Greedy point repair sends only the most visible failed node to the LLM, and local repair expands to a fixed neighborhood. WM-SAR instead scores the failure graph with GEAF, grows a compact relief region, and gives the LLM the connected subgraph that is most responsible for error amplification.
@@ -43,7 +43,7 @@ Greedy point repair sends only the most visible failed node to the LLM, and loca
 ## Intuition
 
 <p align="center">
-  <img src="figures/intuition.png" width="900" alt="Why pointwise repair fails to suppress error re-amplification">
+  <img src="figures/intuition.png" width="640" alt="Why pointwise repair fails to suppress error re-amplification">
 </p>
 
 Pointwise and shallow local repairs can make individual nodes look correct while leaving the amplification chain intact. WM-SAR severs the high-coupling repair region so downstream error growth is suppressed rather than merely delayed.
