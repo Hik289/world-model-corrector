@@ -32,13 +32,21 @@ Xinyuan Song and Zekun Cai. arXiv:2607.01767, 2026.
 
 Paper: [arXiv abstract](https://arxiv.org/abs/2607.01767) · [PDF](https://arxiv.org/pdf/2607.01767)
 
+## Pipeline
+
+<p align="center">
+  <img src="figures/pipeline.png" width="900" alt="Three repair strategies for failed agent rollouts">
+</p>
+
+Greedy point repair sends only the most visible failed node to the LLM, and local repair expands to a fixed neighborhood. WM-SAR instead scores the failure graph with GEAF, grows a compact relief region, and gives the LLM the connected subgraph that is most responsible for error amplification.
+
 ## Intuition
 
 <p align="center">
-  <img src="figures/intuition.png" width="900" alt="Why engineering repair fails to suppress error amplification">
+  <img src="figures/intuition.png" width="900" alt="Why pointwise repair fails to suppress error re-amplification">
 </p>
 
-Pointwise and shallow local repairs can fix visible symptom nodes while leaving the amplification path intact. WM-SAR targets the connected causal subgraph that keeps re-amplifying error, reducing the graph-level amplification mechanism instead of only patching local symptoms.
+Pointwise and shallow local repairs can make individual nodes look correct while leaving the amplification chain intact. WM-SAR severs the high-coupling repair region so downstream error growth is suppressed rather than merely delayed.
 
 ## Overview
 
@@ -142,6 +150,7 @@ All results are saved as JSON to `experiments/results/`.
 ```text
 .
 |-- figures/
+|   |-- pipeline.png        # README method pipeline figure
 |   `-- intuition.png       # README intuition figure
 |-- experiments/            # Non-LLM, LLM, budget, benchmark, and ablation experiments
 |-- wm_sar/
