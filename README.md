@@ -7,15 +7,10 @@
 <p align="center">
   <a href="https://arxiv.org/abs/2607.01767"><img src="https://img.shields.io/badge/arXiv-2607.01767-b31b1b.svg" alt="arXiv"></a>
   <a href="https://arxiv.org/pdf/2607.01767"><img src="https://img.shields.io/badge/Paper-PDF-1f6feb.svg" alt="Paper PDF"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Quickstart-synthetic%20rollout-2ea44f.svg" alt="Quickstart"></a>
-  <a href="#running-experiments"><img src="https://img.shields.io/badge/Experiments-non--LLM%20%7C%20LLM-2563eb.svg" alt="Experiments"></a>
-  <a href="#citation"><img src="https://img.shields.io/badge/Cite-BibTeX-64748b.svg" alt="Citation"></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.13%2B-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/API%20keys-optional%20for%20LLM%20experiments-lightgrey.svg" alt="API keys optional">
-  <img src="https://img.shields.io/badge/method-WM--SAR-7c3aed.svg" alt="WM-SAR">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license">
 </p>
 
@@ -58,7 +53,7 @@ Persistent agents fail inside large planning graphs, not only at isolated predic
 - Identifies error-amplifying regions with GEAF spectral/random-walk scores.
 - Extracts compact connected repair subgraphs with seed-grow-prune search.
 - Compares WM-SAR with greedy point repair, local k-hop repair, window repair, engineering correctors, and LLM baselines.
-- Runs core graph-simulation experiments without API keys; OpenAI/Gemini keys are needed only for optional LLM repair experiments.
+- Runs core graph-simulation experiments without API keys; model API credentials are needed only for optional LLM repair experiments.
 
 ## Requirements
 
@@ -70,8 +65,7 @@ Dependencies:
 - `numpy>=1.24`
 - `scipy>=1.10`
 - `networkx>=3.0`
-- `openai>=1.0` (for LLM experiments only)
-- `google-genai>=1.0` (for Gemini experiments only)
+- Optional model-client libraries for LLM experiments only
 
 Tested with Python 3.13.7.
 
@@ -124,14 +118,15 @@ python experiments/exp5_context_limited.py
 python experiments/exp6_ablation.py
 ```
 
-### LLM experiments (requires API key)
+### LLM experiments (requires model API credentials)
 
 ```bash
-export OPENAI_API_KEY="your-key-here"
-export GEMINI_API_KEY="your-key-here"    # optional, for Gemini models
+export LLM_API_KEY="your-api-key"
+export LLM_BASE_URL="https://your-compatible-endpoint/v1"
+export LLM_MODEL="your-model-name"
 
 python experiments/exp_agent_llm.py      # LLM repair experiment (n=20)
-python experiments/exp_multiapi.py       # Multi-API comparison
+python experiments/exp_multiapi.py       # Multi-model comparison
 ```
 
 ### Real attribution experiment (requires Who&When dataset)
@@ -161,7 +156,7 @@ All results are saved as JSON to `experiments/results/`.
 |   |-- data_generator.py   # Synthetic rollout generator
 |   |-- failure_graph.py    # Rollout-to-failure-graph builder
 |   |-- llm_baselines.py    # LLM-based repair baselines
-|   |-- llm_client.py       # OpenAI/Gemini client; reads env vars
+|   |-- llm_client.py       # General model client; reads env vars
 |   |-- metrics.py          # Recovery, CostNorm, IoU, rho_reduction metrics
 |   |-- region_extractor.py # WMSAR class and WMSARConfig
 |   |-- repair_executor.py  # Repair simulation and measurement

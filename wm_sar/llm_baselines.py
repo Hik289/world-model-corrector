@@ -2,11 +2,11 @@
 llm_baselines.py — LLM-powered repair baselines and WM-SAR with real API calls.
 
 Baselines that call real LLMs:
-  - tracescan_window_llm(G, rollout_steps, w, client)  : GPT-4o-mini, window=w
-  - tracescan_full_llm(G, rollout_steps, client)       : GPT-4o-mini, full trace
-  - llm_repair_full_plan(G, rollout_steps, client)     : GPT-4o-mini, replan
+  - tracescan_window_llm(G, rollout_steps, w, client)  : window=w
+  - tracescan_full_llm(G, rollout_steps, client)       : full trace
+  - llm_repair_full_plan(G, rollout_steps, client)     : full replan
   - wmsar_llm(G, rollout_steps, client_repair)         : graph finds region,
-                                                         then Gemini/GPT repairs
+                                                         then a model repairs it
 
 Recovery judgement: LLM's identified_steps must overlap root-cause step by ≤1.
 
@@ -91,7 +91,7 @@ def tracescan_window_llm(
     first window where LLM identifies a root cause.
     """
     if client is None:
-        client = LLMClient(model="gpt-4o-mini")
+        client = LLMClient()
 
     oracle = _oracle_steps(rollout)
     T = len(rollout_steps)
@@ -158,7 +158,7 @@ def tracescan_full_llm(
 ) -> LLMRepairResult:
     """LLM sees the complete trace; identifies root cause pointwise."""
     if client is None:
-        client = LLMClient(model="gpt-4o-mini")
+        client = LLMClient()
 
     oracle = _oracle_steps(rollout)
     try:
@@ -198,7 +198,7 @@ def llm_replan(
 ) -> LLMRepairResult:
     """Full-context LLM replan: sees entire trace, provides complete repair."""
     if client is None:
-        client = LLMClient(model="gpt-4o-mini")
+        client = LLMClient()
 
     oracle = _oracle_steps(rollout)
     try:
@@ -242,13 +242,13 @@ def wmsar_with_llm_repair(
       1. Graph spectral analysis (GEAF) identifies the error-amplifying region
          — NO LLM involved here; pure graph computation.
       2. The identified region steps are extracted as text.
-      3. ONE LLM call (GPT-4o-mini / Gemini-Flash) repairs the region as a unit.
+      3. ONE LLM call repairs the region as a unit.
 
     This is the key contribution: graph analysis guides a single targeted LLM
     call, rather than scanning the trace step by step.
     """
     if client_repair is None:
-        client_repair = LLMClient(model="gpt-4o-mini")
+        client_repair = LLMClient()
 
     oracle = _oracle_steps(rollout)
 
@@ -336,12 +336,12 @@ def run_all_llm_baselines(
     rollout_steps: list[dict],
     rollout: Any,
     failure_desc: str = "task failed",
-    client_fast: Optional[LLMClient] = None,   # gpt-4o-mini for baselines
-    client_repair: Optional[LLMClient] = None,  # gpt-4o-mini or gemini for repair
+    client_fast: Optional[LLMClient] = None,
+    client_repair: Optional[LLMClient] = None,
 ) -> dict[str, LLMRepairResult]:
     """Run all LLM-based baselines + WM-SAR for one rollout."""
     if client_fast is None:
-        client_fast = LLMClient(model="gpt-4o-mini")
+        client_fast = LLMClient()
     if client_repair is None:
         client_repair = client_fast
 

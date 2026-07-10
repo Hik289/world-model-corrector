@@ -1,14 +1,15 @@
 """
-llm_client.py — Real LLM API calls for WM-SAR experiments.
+llm_client.py — Model API calls for WM-SAR experiments.
 
-Models:
-  - gpt-4o-mini  (OpenAI): TraceScan baselines, LLMRepair, WM-SAR final repair
-  - gemini-2.5-flash (Google): alternative / WM-SAR repair fallback
-    (Note: gemini-2.0-flash was deprecated by Google in 2026Q1; use 2.5-flash.)
+The default path reads general model settings from environment variables:
+  LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_BACKEND
+
+Provider-specific arguments and environment variables are still accepted for
+backward compatibility with older experiment scripts.
 
 Usage:
-  client = LLMClient(model="gpt-4o-mini")
-  result = client.locate_error(trace_steps, window_start, window_end)
+  client = LLMClient()
+  result = client.locate_error(trace_steps)
   result = client.repair_region(region_steps)
   result = client.full_replan(trace_steps)
 """
@@ -131,7 +132,7 @@ Identify the root cause step(s) and provide a repair plan. Respond ONLY with val
 
 # ── LLM client ──────────────────────────────────────────────────────────────
 class LLMClient:
-    """Unified LLM client supporting gpt-4o-mini and gemini-2.5-flash."""
+    """Unified LLM client with general env-var configuration."""
 
     SUPPORTED = {
         # OpenAI models
@@ -156,8 +157,10 @@ class LLMClient:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
         backend: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         openai_api_key: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
         max_retries: int = 3,
@@ -165,27 +168,65 @@ class LLMClient:
         temperature: float = 0.0,
         max_tokens: int = 512,
     ):
-        self.model = model
-        # backend can be explicitly set or inferred from SUPPORTED dict
-        self.backend = backend or self.SUPPORTED.get(model, "openai")
+        self.model = (
+            model
+            or os.environ.get("LLM_MODEL")
+            or os.environ.get("MODEL_NAME")
+            or "gpt-4o-mini"
+        )
+        # backend can be explicitly set, read from env, or inferred from known aliases
+        self.backend = (
+            backend
+            or os.environ.get("LLM_BACKEND")
+            or self.SUPPORTED.get(self.model, "openai")
+        ).lower()
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.temperature = temperature
         self.max_tokens = max_tokens
 
         # initialise backend
-        if self.backend == "openai":
+        if self.backend in {
+            "openai",
+            "openai-compatible",
+            "chat",
+            "chat-completions",
+            "chat_completions",
+            "compatible",
+        }:
+            self.backend = "openai"
             if not _OPENAI_AVAILABLE:
                 raise ImportError("pip install openai")
-            key = openai_api_key or os.environ.get("OPENAI_API_KEY", "")
-            self._openai = _openai.OpenAI(api_key=key)
+            key = (
+                api_key
+                or openai_api_key
+                or os.environ.get("LLM_API_KEY")
+                or os.environ.get("OPENAI_API_KEY", "")
+            )
+            endpoint = (
+                base_url
+                or os.environ.get("LLM_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+            )
+            client_kwargs = {"api_key": key}
+            if endpoint:
+                client_kwargs["base_url"] = endpoint
+            self._openai = _openai.OpenAI(**client_kwargs)
 
         elif self.backend == "gemini":
             if not _GEMINI_AVAILABLE:
                 raise ImportError("pip install google-genai")
-            key = gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+            key = (
+                api_key
+                or gemini_api_key
+                or os.environ.get("LLM_API_KEY")
+                or os.environ.get("GEMINI_API_KEY", "")
+            )
             self._gemini_client = genai.Client(api_key=key)
-            self._gemini_model = model
+            self._gemini_model = self.model
+
+        else:
+            raise ValueError(f"Unsupported LLM backend: {self.backend}")
 
     # ── internal call ────────────────────────────────────────────────────────
     def _call(self, system: str, user: str) -> tuple[str, int, int, float]:

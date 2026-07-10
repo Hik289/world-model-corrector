@@ -1,6 +1,6 @@
 """LLM Repair Experiment on Agent Calling-Tree Dataset.
 
-All methods use GPT-4o-mini for the ACTUAL repair call.
+All methods use the configured model API for the ACTUAL repair call.
 They differ ONLY in how many / which nodes they show to the LLM.
 
 Engineering baselines (pointwise / context-limited):
@@ -269,7 +269,7 @@ def main():
                         help="Comma-separated list of seeds, e.g. '42,123,456'. "
                              "If set, each seed is run separately and a merged "
                              "JSON is written to --out plus per-seed JSONs.")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--model", type=str, default=os.environ.get("LLM_MODEL"))
     parser.add_argument("--resume", action="store_true",
                         help="Resume: skip instances already present in "
                              "<out>_seed<S>.jsonl. The JSONL is appended to "
@@ -283,7 +283,8 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"  Agent Calling-Tree LLM Experiment")
-    print(f"  n={args.n} × seeds={seeds}, model={args.model}")
+    model_label = args.model or os.environ.get("MODEL_NAME") or "configured default"
+    print(f"  n={args.n} × seeds={seeds}, model={model_label}")
     print(f"{'='*60}\n")
 
     client = LLMClient(model=args.model, temperature=0.0, max_tokens=512)
@@ -292,7 +293,7 @@ def main():
     all_results      = []   # flat list of run_instance() dicts for aggregate()
     per_seed_outputs = {}
 
-    # Crash-safe per-instance JSONL append (lesson from M1 OpenAI 429 abort:
+    # Crash-safe per-instance JSONL append (lesson from a rate-limit abort:
     # in-memory only state was lost). Each instance is flushed to disk as
     # soon as it completes.
     os.makedirs(os.path.dirname(args.out), exist_ok=True)

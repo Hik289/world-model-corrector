@@ -1,12 +1,12 @@
 """
-exp_llm.py — Main LLM experiment with real GPT-4o-mini API calls.
+exp_llm.py — Main LLM experiment with real model API calls.
 
 Compares:
-  TraceScan-w1/w2/w4-LLM  : GPT-4o-mini with limited context window
-  TraceScan-Full-LLM       : GPT-4o-mini with full trace context
-  LLMRepair-Full-Plan-LLM  : GPT-4o-mini full replan
+  TraceScan-w1/w2/w4-LLM  : configured model with limited context window
+  TraceScan-Full-LLM       : configured model with full trace context
+  LLMRepair-Full-Plan-LLM  : configured model full replan
   LastError-Heuristic      : No LLM, highest numeric error
-  WM-SAR-LLM               : Graph analysis (GEAF) → ONE GPT-4o-mini call
+  WM-SAR-LLM               : Graph analysis (GEAF) → ONE model call
 
 Usage:
   python experiments/exp_llm.py [--n 30] [--seed 42] [--outfile results/exp_llm.json]
@@ -30,15 +30,16 @@ from wm_sar.text_scenarios import rollout_to_steps
 
 
 def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
+    model = os.environ.get("LLM_MODEL")
     print(f"=== LLM Experiment: n={n}, seed={seed} ===")
-    print(f"  Using gpt-4o-mini for all baselines + WM-SAR repair")
+    print(f"  Using configured model for all baselines + WM-SAR repair")
     print()
 
     rng = np.random.default_rng(seed)
 
     # --- LLM clients ---
     client = LLMClient(
-        model="gpt-4o-mini",
+        model=model,
         temperature=0.0,
         max_tokens=512,
     )
