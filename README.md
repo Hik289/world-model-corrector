@@ -6,9 +6,8 @@
 
 <p align="center">
   <a href="https://arxiv.org/abs/2607.01767"><img src="https://img.shields.io/badge/arXiv-2607.01767-b31b1b.svg" alt="arXiv"></a>
-  <a href="https://arxiv.org/pdf/2607.01767"><img src="https://img.shields.io/badge/Paper-PDF-1f6feb.svg" alt="Paper PDF"></a>
-  <img src="https://img.shields.io/badge/python-3.13%2B-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT license">
+  <a href="requirements.txt"><img src="https://img.shields.io/badge/Python-3.13%2B-3776AB.svg" alt="Python 3.13+"></a>
 </p>
 
 <p align="center">
