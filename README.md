@@ -16,6 +16,12 @@
 
 Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplification Repair), a world-model corrector that repairs failed agent rollouts by targeting the causal subgraph that repeatedly amplifies error, rather than patching the most visible local symptom.
 
+## At a Glance
+
+- **Research question.** Can agent rollout failures be repaired by correcting the causal amplifier rather than the final symptom?
+- **Core idea.** WM-SAR identifies stable repair regions in failure graphs and compares subgraph repair against pointwise correction.
+- **What is included.** Synthetic and LLM experiments, budget studies, benchmark topology tests, API references, and real-attribution support.
+
 ## Paper
 
 **Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts**  
@@ -31,7 +37,7 @@ Paper: [arXiv abstract](https://arxiv.org/abs/2607.01767) · [PDF](https://arxiv
 
 Greedy point repair sends only the most visible failed node to the LLM, and local repair expands to a fixed neighborhood. WM-SAR instead scores the failure graph with GEAF, grows a compact relief region, and gives the LLM the connected subgraph that is most responsible for error amplification.
 
-## Intuition
+## Motivation
 
 <p align="center">
   <img src="figures/intuition.png" width="640" alt="Why pointwise repair fails to suppress error re-amplification">
@@ -43,7 +49,7 @@ Pointwise and shallow local repairs can make individual nodes look correct while
 
 Persistent agents fail inside large planning graphs, not only at isolated prediction nodes. WM-SAR is a graph-based framework for repairing those failed rollouts in place. It converts a failed rollout into a *failure graph*, computes a Graph Error Amplification Factor (GEAF) to identify where errors are repeatedly amplified, and extracts a compact connected repair region with a seed-grow-prune algorithm. The resulting context is small enough for realistic LLM repair calls while still covering the causal subgraph that drives the failure.
 
-## Highlights
+## Key Contributions
 
 - Converts failed agent and world-model rollouts into directed failure graphs.
 - Identifies error-amplifying regions with GEAF spectral/random-walk scores.
