@@ -98,7 +98,7 @@ for name, p in sorted(all_plans.items()):
     print(f"{name:<30} rec={r['recovered']}  cost={p.token_cost}")
 ```
 
-## Running Experiments
+## Reproducing Results
 
 ### Non-LLM experiments (no API key needed)
 
