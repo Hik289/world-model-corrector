@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://arxiv.org/abs/2607.01767"><img src="https://img.shields.io/badge/arXiv-2607.01767-b31b1b.svg" alt="arXiv"></a>
-  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT license">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT license"></a>
   <a href="requirements.txt"><img src="https://img.shields.io/badge/Python-3.13%2B-3776AB.svg" alt="Python 3.13+"></a>
 </p>
 
@@ -225,6 +225,13 @@ from wm_sar.failure_graph import agent_rollout_to_graph
 # (see data_generator.py for the full schema)
 G = agent_rollout_to_graph(rollout)
 ```
+
+## Artifact Checklist
+
+- **Code release.** Core implementations, configuration files, and reproduction entry points are versioned in this repository.
+- **Reproducibility.** Start with the smoke or quick-start path before paper-scale runs; record the commit hash, Python version, backend/model identifiers, seeds, and command-line arguments.
+- **Data and credentials.** Large datasets, benchmark downloads, generated outputs, and API keys are intentionally excluded. Use the data and configuration notes above to recreate them or point to local copies.
+- **Reporting.** For paper-scale runs, keep raw run folders immutable and regenerate tables or figures from the logged artifacts with the listed analysis scripts.
 
 ## Citation
 
