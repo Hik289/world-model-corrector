@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>Xinyuan Song</strong> · <strong>Zekun Cai</strong>
+  <strong>Anonymous Authors</strong>
 </p>
 
 Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplification Repair), a world-model corrector that repairs failed agent rollouts by targeting the causal subgraph that repeatedly amplifies error, rather than patching the most visible local symptom.
@@ -25,7 +25,7 @@ Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplifi
 ## Paper
 
 **Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts**  
-Xinyuan Song and Zekun Cai. arXiv:2607.01767, 2026.
+Anonymous Authors. arXiv:2607.01767, 2026.
 
 Paper: [arXiv abstract](https://arxiv.org/abs/2607.01767) · [PDF](https://arxiv.org/pdf/2607.01767)
 
@@ -242,7 +242,7 @@ For a reviewer-oriented map of smoke checks, paper-scale entry points, data boun
 ```bibtex
 @misc{song2026repair,
   title         = {Repair the Amplifier, Not the Symptom: Stable World-Model Correction for Agent Rollouts},
-  author        = {Xinyuan Song and Zekun Cai},
+  author        = {Anonymous Authors},
   year          = {2026},
   eprint        = {2607.01767},
   archivePrefix = {arXiv},
