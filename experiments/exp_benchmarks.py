@@ -12,7 +12,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wm_sar.benchmark_graphs import BENCHMARK_GENERATORS
-from wm_sar.engineering_baselines import run_all_baselines, ALL_BASELINES
+from wm_sar.engineering_baselines import run_all_baselines
 from wm_sar import amplification as amp
 from wm_sar.baselines import wm_sar as wm_sar_select
 
@@ -47,7 +47,7 @@ def wmsar_summary(trees) -> dict:
             region = wm_sar_select(G)
             r = _evaluate_repair(G, region, "WM-SAR")
             results.append(r)
-        except Exception as e:
+        except Exception:
             pass
     if not results:
         return {}

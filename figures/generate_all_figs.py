@@ -18,7 +18,7 @@ Figures produced:
 
 DPI ≥ 150, font sizes ≥ 9pt, all axes labelled.
 
-This script REPLACES the previous one (which used hardcoded numbers).
+All plotted values are loaded from tracked experiment outputs.
 """
 
 from __future__ import annotations
@@ -116,10 +116,10 @@ def fig_rho_reduction():
     # Use consistent orange for region size to avoid colour-coding inconsistency.
     size_color = C_ORANGE
 
-    b1 = ax1.bar(x - w/2, rho_red,  width=w, color=rho_colors,
-                 edgecolor="white", linewidth=0.5, zorder=3)
-    b2 = ax2.bar(x + w/2, sizes_n, width=w, color=size_color,
-                 edgecolor="white", linewidth=0.5, zorder=3, alpha=0.85)
+    ax1.bar(x - w/2, rho_red, width=w, color=rho_colors,
+            edgecolor="white", linewidth=0.5, zorder=3)
+    ax2.bar(x + w/2, sizes_n, width=w, color=size_color,
+            edgecolor="white", linewidth=0.5, zorder=3, alpha=0.85)
 
     ax1.axhline(rho_B0, color=C_GRAY, linewidth=0.8, linestyle="--", zorder=2,
                 label=f"Unrepaired ρ(B)={rho_B0:.2f}")
@@ -340,7 +340,7 @@ def fig_cascade_gain():
 # ═══════════════════════════════════════════════════════════════════════════
 #  5. LLM single-API comparison panel  ──── exp_agent_llm.json
 #     and 6. Multi-API panel ──── exp_multiapi.json
-#     ALSO merged: fig_llm_multiapi.png (2-panel as required by Director)
+#     Also merged: fig_llm_multiapi.png (two-panel comparison)
 # ═══════════════════════════════════════════════════════════════════════════
 def _plot_llm_panel(ax, d_llm, with_legend=True):
     """Single-API horizontal bar (Rec-Exact/Rec-Type/Rec-2Hop) + token text."""
@@ -428,7 +428,7 @@ def _plot_multiapi_panel(ax_heat, ax_line, d_multi):
     cmap = LinearSegmentedColormap.from_list(
         "wmsar_blue", ["#FFFFFF", "#DEEBF7", "#2166AC"], N=256)
     vmax = max(0.6, float(data.max()) + 0.02)
-    im = ax_heat.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
+    ax_heat.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
     ax_heat.set_xticks(range(N))
     ax_heat.set_xticklabels([short_model.get(k, k) for k in model_keys], fontsize=7.5)
     ax_heat.set_yticks(range(M))
@@ -495,7 +495,7 @@ def fig_multiapi():
 
 
 def fig_llm_multiapi_merged():
-    """NEW: merged 2-panel — required by Director for 8-page compaction.
+    """Generate the compact two-panel multi-model comparison.
 
     (a) Single-API recall barchart   (LEFT)
     (b) Multi-API Rec-Exact heatmap  (RIGHT-TOP)

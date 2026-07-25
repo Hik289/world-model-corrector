@@ -91,8 +91,9 @@ print(f"Region: {len(plan.nodes)} nodes, token cost: {plan.token_cost}")
 rec = re_.measure_recovery(G, plan.nodes)
 print(f"Recovered: {rec['recovered']}, IoU: {rec['region_iou']:.3f}")
 
-# 5. Compare all baselines at once
+# 5. Compare reference baselines and WM-SAR
 all_plans = bl.all_baselines(G, budget=6)
+all_plans["WM-SAR"] = bl.wm_sar(G, budget=6)
 for name, p in sorted(all_plans.items()):
     r = re_.measure_recovery(G, p.nodes)
     print(f"{name:<30} rec={r['recovered']}  cost={p.token_cost}")
@@ -176,18 +177,20 @@ All results are saved as JSON to `experiments/results/`.
 from wm_sar.region_extractor import WMSARConfig
 
 cfg = WMSARConfig(
-    H=4,                 # Spectral random-walk depth (robust: H=1..16 all equivalent)
+    H=4,                 # Spectral random-walk depth
+    weight_norm=1.0,     # Estimated model-weight amplification
     max_region_size=20,  # Max nodes in repair region
-    n_seeds=3,           # Initial seed nodes
-    lambda1=1.0,         # Error coverage weight
-    lambda2=0.5,         # Uncertainty weight
-    lambda3=0.3,         # Target amplification weight
-    merge_tau=0.1,       # BFS grow expansion threshold
-    use_target=True,     # Enable target amplification scoring
+    n_seeds=6,           # Initial seed nodes
+    lambda1=1.2,         # Error-coverage gain weight
+    lambda2=1.5,         # Spectral-relief gain weight
+    lambda3=0.1,         # Cost regularizer
+    merge_tau=0.5,       # Jaccard threshold for merging regions
+    gamma=0.95,          # Planning discount factor
+    use_geaf=True,       # Enable GEAF seed scoring
     use_coupling=True,   # Enable boundary coupling term ρ(B_R)
-    use_uncertainty=True,# Enable uncertainty weighting
-    use_growing=True,    # Enable BFS region growing (critical component)
+    use_growing=True,    # Enable connected region growing
     use_pruning=True,    # Enable region pruning
+    use_rho_relief=True, # Include spectral relief in the grow objective
 )
 ```
 
@@ -198,8 +201,12 @@ from wm_sar.region_extractor import WMSAR, WMSARConfig
 import networkx as nx
 
 extractor = WMSAR(WMSARConfig())
-region: set[str] = extractor.repair_region(G)  # returns set of node IDs
+region: set[str] = extractor.repair_region(G, budget=14)
 ```
+
+The returned set is one connected region and never exceeds the supplied
+node-cost budget. If no complete candidate fits, the extractor returns the
+best affordable singleton (or an empty set when nothing is affordable).
 
 Input graph `G` is an `nx.DiGraph` where each node has attributes:
 - `err` (float): observable error signal at this node

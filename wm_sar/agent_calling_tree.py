@@ -22,9 +22,7 @@ Failure injection:
 
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 import networkx as nx
 import numpy as np

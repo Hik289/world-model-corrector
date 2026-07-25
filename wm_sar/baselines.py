@@ -23,7 +23,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import networkx as nx
-import numpy as np
 
 from . import amplification as amp
 from .failure_graph import node_error, node_unc

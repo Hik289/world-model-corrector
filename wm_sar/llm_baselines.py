@@ -15,16 +15,13 @@ All results return an LLMRepairResult with token counts from the actual API.
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
-import numpy as np
 import networkx as nx
 
 from wm_sar.llm_client import LLMClient, LLMResult
 from wm_sar.baselines import wm_sar as _graph_wm_sar          # graph analysis
-from wm_sar.repair_executor import measure_recovery
 
 
 # ── Result type ─────────────────────────────────────────────────────────────
@@ -125,7 +122,7 @@ def tracescan_window_llm(
             if result.identified_steps:
                 best_identified = result.identified_steps
                 break
-        except Exception as e:
+        except Exception:
             # log but don't crash; fall back to empty
             pass
 

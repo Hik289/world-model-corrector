@@ -218,7 +218,7 @@ def main():
             row += f"  {v:>14.3f}"
         print(row)
 
-    print(f"\n  Tokens comparison")
+    print("\n  Tokens comparison")
     print(hdr)
     print("  " + "-" * (len(hdr) - 2))
     for m in methods:
@@ -229,7 +229,7 @@ def main():
         print(row)
 
     # ── WM-SAR advantage (Rec-Exact gap vs best baseline) ───────────────────
-    print(f"\n  WM-SAR Rec-Exact advantage over best engineering baseline:")
+    print("\n  WM-SAR Rec-Exact advantage over best engineering baseline:")
     for k in model_keys:
         wmsar = all_model_results[k].get("WM-SAR", {}).get("rec_exact", 0)
         others = [all_model_results[k].get(m, {}).get("rec_exact", 0)

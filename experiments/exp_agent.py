@@ -41,7 +41,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wm_sar.agent_calling_tree import generate_calling_trees
-from wm_sar.engineering_baselines import run_all_baselines, ALL_BASELINES
+from wm_sar.engineering_baselines import run_all_baselines
 from wm_sar import amplification as amp
 
 
@@ -83,20 +83,20 @@ def main():
             n_superadditive += 1
     frac_super = n_superadditive / len(G_list)
 
-    print(f"\n  Pre-repair statistics:")
+    print("\n  Pre-repair statistics:")
     print(f"    mean ρ(B)         = {np.mean(rhos):.4f} ± {np.std(rhos):.4f}")
     print(f"    mean GrowthSlope  = {np.mean(slopes):.4f} ± {np.std(slopes):.4f}")
     print(f"    T2 super-add (ρ(B)>max(L_X,M_A)): {n_superadditive}/{len(G_list)} = {frac_super:.1%}")
 
     # --- Run all baselines ---
-    print(f"\n  Running baselines...\n")
+    print("\n  Running baselines...\n")
     print(f"  {'Method':<28}  {'ρ_red':>6}  {'MSE@32':>8}  {'slope':>7}  {'conn':>5}  {'IoU':>6}")
     print(f"  {'-'*68}")
     summaries = run_all_baselines(G_list, verbose=True)
 
     # --- Print comparison table ---
     print(f"\n{'='*60}")
-    print(f"  Multi-step error table (NodeMSE@H)")
+    print("  Multi-step error table (NodeMSE@H)")
     print(f"{'='*60}")
     horizons = [1, 4, 8, 16, 32]
     header = f"  {'Method':<28}" + "".join(f"  H={H:2d}" for H in horizons) + \
@@ -116,7 +116,7 @@ def main():
         print(row)
 
     # --- T4 planning regret comparison ---
-    print(f"\n  T4 Planning Regret Reduction:")
+    print("\n  T4 Planning Regret Reduction:")
     for name in methods_sorted:
         s = summaries[name]
         rr = s.get("mean_regret_reduction", 0.0)

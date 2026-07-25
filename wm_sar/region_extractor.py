@@ -30,13 +30,12 @@ Algorithm:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 import networkx as nx
 import numpy as np
 
 from . import amplification as amp
-from .failure_graph import node_cost, node_error, node_unc
+from .failure_graph import node_cost, node_error
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -60,6 +59,22 @@ class WMSARConfig:
     use_growing: bool = True      # grow regions (else: seed only = pointwise GEAF)
     use_pruning: bool = True      # prune non-contributing nodes
     use_rho_relief: bool = True   # growing objective includes ρ-relief (else: error only)
+
+    def __post_init__(self):
+        if self.H < 1:
+            raise ValueError("H must be at least 1")
+        if self.max_region_size < 1:
+            raise ValueError("max_region_size must be at least 1")
+        if self.n_seeds < 1:
+            raise ValueError("n_seeds must be at least 1")
+        if self.weight_norm < 0:
+            raise ValueError("weight_norm must be non-negative")
+        if self.lambda3 <= 0:
+            raise ValueError("lambda3 must be positive")
+        if not 0 <= self.merge_tau <= 1:
+            raise ValueError("merge_tau must be in [0, 1]")
+        if not 0 <= self.gamma <= 1:
+            raise ValueError("gamma must be in [0, 1]")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -89,7 +104,7 @@ class WMSAR:
         self.cfg = config or WMSARConfig()
         self._geaf_cache: dict = {}   # node -> GEAF value
         self._kappa_cache: dict = {}  # node -> coupling factor
-        self._rho_global: float = 0.0
+        self._rho_full: float = 0.0
 
     def _precompute(self, G: nx.DiGraph) -> None:
         """Pre-compute GEAF and coupling factors for all nodes."""
@@ -97,8 +112,7 @@ class WMSAR:
         self._geaf_cache = amp.geaf_all(G, H=c.H, weight_norm=c.weight_norm)
         self._kappa_cache = {v: amp.coupling_factor(G, v, c.weight_norm)
                               for v in G.nodes()}
-        self._rho_global = amp.rho_B_complement(G, set(), c.weight_norm)
-        # Pre-compute full-graph rho_B (= baseline amplification before any repair)
+        # Baseline amplification before any repair.
         self._rho_full = amp.rho_B(G, set(G.nodes()), c.weight_norm)
 
     def _rho_relief(self, G: nx.DiGraph, region: set) -> float:
@@ -148,7 +162,7 @@ class WMSAR:
                 break
 
             best_u, best_gain = None, -1e9
-            for u in frontier:
+            for u in sorted(frontier, key=str):
                 cand = region | {u}
                 # ρ-relief: how much does adding u reduce post-repair amplification?
                 rho_cand = amp.rho_B_complement(G, cand, c.weight_norm)
@@ -181,24 +195,28 @@ class WMSAR:
             return region
         t_star = G.graph.get("t_star")
         # Only keep nodes whose removal increases ρ_complement (i.e., they matter)
-        rho_full_region = amp.rho_B_complement(G, region, self.cfg.weight_norm)
         pruned = set(region)
-        for v in list(region):
+        rho_pruned = amp.rho_B_complement(G, pruned, self.cfg.weight_norm)
+        for v in sorted(region, key=str):
             if v == t_star:
                 continue
             smaller = pruned - {v}
             if not smaller:
                 continue
+            if len(smaller) > 1 and not nx.is_connected(
+                G.subgraph(smaller).to_undirected()
+            ):
+                continue
             rho_smaller = amp.rho_B_complement(G, smaller, self.cfg.weight_norm)
             # If removing v doesn't increase ρ (no benefit), drop it
-            if rho_smaller <= rho_full_region + 1e-6:
+            if rho_smaller <= rho_pruned + 1e-6:
                 pruned.discard(v)
+                rho_pruned = rho_smaller
         return pruned if pruned else region
 
     # ── 4. SCORE ─────────────────────────────────────────────────────────────
 
     def score(self, G: nx.DiGraph, region: set) -> float:
-        c = self.cfg
         if not region:
             return 0.0
         err_cover = sum(node_error(G, r) for r in region)
@@ -245,18 +263,33 @@ class WMSAR:
         if not regions:
             return set()
         if budget is None:
-            return regions[0].nodes
-        # Greedy knapsack
-        used = 0.0
-        chosen: set = set()
-        for r in regions:
-            c = r.cost(G)
-            if used + c <= budget:
-                chosen |= r.nodes
-                used += c
-        if not chosen:
-            chosen = regions[0].nodes  # always return at least one region
-        return chosen
+            return set(regions[0].nodes)
+        if budget < 0:
+            raise ValueError("budget must be non-negative")
+
+        # The method returns one connected repair region, never a disconnected
+        # union of independently grown candidates.
+        for region in regions:
+            if region.cost(G) <= budget:
+                return set(region.nodes)
+
+        # If no complete region fits, return the best affordable singleton.
+        affordable = {
+            node
+            for region in regions
+            for node in region.nodes
+            if node_cost(G, node) <= budget
+        }
+        if not affordable:
+            return set()
+        best = max(
+            affordable,
+            key=lambda node: (
+                node_error(G, node) / max(node_cost(G, node), 1e-12),
+                str(node),
+            ),
+        )
+        return {best}
 
     def _merge(self, regions: list[set]) -> list[set]:
         tau = self.cfg.merge_tau
@@ -266,7 +299,11 @@ class WMSAR:
             for i, m in enumerate(merged):
                 inter = len(r & m)
                 union = len(r | m)
-                if union and inter / union > tau:
+                if (
+                    union
+                    and union <= self.cfg.max_region_size
+                    and inter / union > tau
+                ):
                     merged[i] = m | r
                     placed = True
                     break

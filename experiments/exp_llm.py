@@ -16,7 +16,6 @@ import argparse
 import json
 import os
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -32,10 +31,8 @@ from wm_sar.text_scenarios import rollout_to_steps
 def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
     model = os.environ.get("LLM_MODEL")
     print(f"=== LLM Experiment: n={n}, seed={seed} ===")
-    print(f"  Using configured model for all baselines + WM-SAR repair")
+    print("  Using configured model for all baselines + WM-SAR repair")
     print()
-
-    rng = np.random.default_rng(seed)
 
     # --- LLM clients ---
     client = LLMClient(

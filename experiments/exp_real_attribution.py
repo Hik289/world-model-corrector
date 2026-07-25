@@ -15,7 +15,7 @@ Adapter: convert each task into a directed graph where:
   - true_root  = node corresponding to `mistake_step` (0-indexed in history)
   - err        = 1.0 if step >= mistake_step else 0.0 (cascade visualisation)
 
-Methods (Wave-B-S4 subset, per Director spec):
+Methods evaluated in the real-attribution subset:
   - LastError-Point     : pick the last node with err>0 (= the failed final step)
   - TraceScan-w4-Point  : pick the 4-node window around the highest-error node
   - LocalRepair-2Hop    : pick the 2-hop neighbourhood of the highest-error node
@@ -48,7 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(HERE)
 sys.path.insert(0, PROJ)
 
-from wm_sar.engineering_baselines import greedy_point, window_repair, local_khop
+from wm_sar.engineering_baselines import window_repair, local_khop
 from wm_sar.region_extractor import WMSAR, WMSARConfig
 
 
@@ -258,7 +258,7 @@ def main():
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
-    print(f"  Real Multi-Agent Attribution Experiment (Wave B S4)")
+    print("  Real Multi-Agent Attribution Experiment (Wave B S4)")
     print(f"  data_dir={args.data_dir}  n={args.n}")
     print(f"{'='*60}\n")
 

@@ -158,7 +158,6 @@ def build_locate_prompt(
         "Respond ONLY in valid JSON."
     )
 
-    node_names = ", ".join(f"'{n}'" for n in node_list[:20])
     user = (
         f"{tree_text}\n\n"
         "Based on the node states above, which node most likely INTRODUCED the "

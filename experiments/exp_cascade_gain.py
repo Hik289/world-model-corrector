@@ -12,7 +12,7 @@ Hypothesis (from T4):
 Key claim: WM-SAR advantage = (ρ_WM-SAR - ρ_best_eng) grows monotonically with α.
 """
 
-import argparse, json, os, sys, time
+import argparse, hashlib, json, os, sys, time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,7 +31,7 @@ KEY_METHODS = ["Greedy-Point(K=1)", "Window-4-Point", "TopK-Point(K=5)",
 
 def inject_with_gain(G_orig, alpha: float):
     """Re-cascade errors with a new gain α (keeps graph topology + root cause)."""
-    import copy, networkx as nx
+    import copy
     G = copy.deepcopy(G_orig)
     root = G.graph.get("gt_region", set())
     root_nodes = sorted(root)  # nodes with original error
@@ -50,7 +50,11 @@ def inject_with_gain(G_orig, alpha: float):
     # BFS cascade with new alpha
     visited = {rc}
     queue = [rc]
-    rng = np.random.default_rng(abs(hash(rc)) % 10000)
+    stable_seed = int.from_bytes(
+        hashlib.sha256(str(rc).encode("utf-8")).digest()[:8],
+        "big",
+    )
+    rng = np.random.default_rng(stable_seed)
     while queue:
         nxt = []
         for n in queue:

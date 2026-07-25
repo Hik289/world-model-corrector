@@ -19,7 +19,7 @@ import os
 import time
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 # ── external deps ──────────────────────────────────────────────────────────
@@ -31,14 +31,9 @@ except ImportError:
 
 try:
     import google.genai as genai
-    from google.genai import types as genai_types
     _GEMINI_AVAILABLE = True
 except ImportError:
-    try:
-        import google.generativeai as genai  # fallback to old SDK
-        _GEMINI_AVAILABLE = True
-    except ImportError:
-        _GEMINI_AVAILABLE = False
+    _GEMINI_AVAILABLE = False
 
 # ── result dataclass ────────────────────────────────────────────────────────
 @dataclass
@@ -184,6 +179,12 @@ class LLMClient:
         self.retry_delay = retry_delay
         self.temperature = temperature
         self.max_tokens = max_tokens
+        if self.max_retries < 1:
+            raise ValueError("max_retries must be at least 1")
+        if self.retry_delay < 0:
+            raise ValueError("retry_delay must be non-negative")
+        if self.max_tokens < 1:
+            raise ValueError("max_tokens must be at least 1")
 
         # initialise backend
         if self.backend in {
@@ -203,6 +204,10 @@ class LLMClient:
                 or os.environ.get("LLM_API_KEY")
                 or os.environ.get("OPENAI_API_KEY", "")
             )
+            if not key:
+                raise ValueError(
+                    "missing LLM_API_KEY or OPENAI_API_KEY for OpenAI backend"
+                )
             endpoint = (
                 base_url
                 or os.environ.get("LLM_BASE_URL")
@@ -222,6 +227,10 @@ class LLMClient:
                 or os.environ.get("LLM_API_KEY")
                 or os.environ.get("GEMINI_API_KEY", "")
             )
+            if not key:
+                raise ValueError(
+                    "missing LLM_API_KEY or GEMINI_API_KEY for Gemini backend"
+                )
             self._gemini_client = genai.Client(api_key=key)
             self._gemini_model = self.model
 
@@ -380,12 +389,20 @@ class LLMClient:
             raw_response=raw,
         )
 
+    def chat(self, system: str, user: str) -> "ChatResult":
+        """Make a generic chat call and return text plus usage metadata."""
+        raw, pt, ct, lat = self._call(system, user)
+        return ChatResult(
+            text=raw,
+            prompt_tokens=pt,
+            completion_tokens=ct,
+            latency_ms=lat,
+        )
+
 
 # ── Generic chat interface ───────────────────────────────────────────────────
 
-from dataclasses import dataclass as _dataclass
-
-@_dataclass
+@dataclass
 class ChatResult:
     text: str
     prompt_tokens: int
@@ -395,13 +412,3 @@ class ChatResult:
     @property
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.completion_tokens
-
-
-def chat(self, system: str, user: str) -> ChatResult:
-    """Generic chat call. Returns ChatResult with .text, .prompt_tokens, etc."""
-    raw, pt, ct, lat = self._call(system, user)
-    return ChatResult(text=raw, prompt_tokens=pt, completion_tokens=ct, latency_ms=lat)
-
-
-# Monkey-patch onto LLMClient
-LLMClient.chat = chat

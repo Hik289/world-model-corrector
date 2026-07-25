@@ -55,7 +55,6 @@ def _figure(rows: list[dict]) -> None:
 
     sns.set_theme(style="whitegrid")
     metrics = ["dGEAF", "dRhoB", "dErrorSlope"]
-    methods = [r["Method"] for r in rows]
     x = np.arange(len(metrics))
     w = 0.15
     fig, ax = plt.subplots(figsize=(9, 5))

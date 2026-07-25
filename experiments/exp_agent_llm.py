@@ -282,7 +282,7 @@ def main():
     seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else [args.seed]
 
     print(f"\n{'='*60}")
-    print(f"  Agent Calling-Tree LLM Experiment")
+    print("  Agent Calling-Tree LLM Experiment")
     model_label = args.model or os.environ.get("MODEL_NAME") or "configured default"
     print(f"  n={args.n} × seeds={seeds}, model={model_label}")
     print(f"{'='*60}\n")
@@ -448,7 +448,7 @@ def main():
     # Per-seed Rec-Exact for WM-SAR-LLM (std across seeds = health signal)
     per_seed_wmsar = {}
     if len(seeds) > 1:
-        print(f"\n  Per-seed Rec-Exact for WM-SAR-LLM:")
+        print("\n  Per-seed Rec-Exact for WM-SAR-LLM:")
         for seed in seeds:
             vals = [p["results"]["WM-SAR-LLM"]["rec_exact"]
                     for p in all_per_instance if p["seed"] == seed

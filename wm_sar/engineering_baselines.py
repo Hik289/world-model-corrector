@@ -35,7 +35,7 @@ import networkx as nx
 import numpy as np
 
 from . import amplification as amp
-from .failure_graph import node_error, node_unc, node_cost
+from .failure_graph import node_error
 from .region_extractor import WMSAR, WMSARConfig
 
 

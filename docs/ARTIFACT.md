@@ -17,6 +17,7 @@ Operational notes for reproducing `Repair the Amplifier, Not the Symptom` from t
 Run these checks before long jobs:
 
 ```bash
+python -m unittest discover -s tests -v
 python -m compileall -q .
 ```
 

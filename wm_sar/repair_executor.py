@@ -17,7 +17,6 @@ Computed by forward propagation over the (acyclic) failure graph.
 from __future__ import annotations
 
 import networkx as nx
-import numpy as np
 
 from .failure_graph import node_error
 
@@ -44,6 +43,8 @@ def propagate_effective_error(
     G: nx.DiGraph, repaired: set[str], strength: float = REPAIR_STRENGTH
 ) -> dict[str, float]:
     """Forward-propagate residual error after repairing ``repaired``."""
+    if not 0 <= strength <= 1:
+        raise ValueError("strength must be in [0, 1]")
     order = _topo(G)
     eff: dict[str, float] = {}
     for v in order:

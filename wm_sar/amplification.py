@@ -364,7 +364,6 @@ def simulate_error_propagation(G: nx.DiGraph, repaired: set,
     if n == 0:
         return {h: 0.0 for h in range(1, H + 1)}
 
-    idx = {v: i for i, v in enumerate(nodes)}
     A, _, _ = adjacency_matrix(G)
 
     # Initial error vector (post-repair)

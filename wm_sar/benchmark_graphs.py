@@ -21,8 +21,6 @@ generate_calling_trees() in agent_calling_tree.py.
 
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass, field
 from typing import Any
 
 import networkx as nx
@@ -30,9 +28,6 @@ import numpy as np
 
 from .agent_calling_tree import (
     AgentCallTree,
-    FEAT_DIM,
-    NODE_TYPES,
-    EDGE_TYPES,
 )
 from .failure_graph import build_from_agent_calling_tree
 from . import amplification as amp
