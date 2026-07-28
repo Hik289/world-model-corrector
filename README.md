@@ -16,11 +16,15 @@
 
 Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplification Repair), a world-model corrector that repairs failed agent rollouts by targeting the causal subgraph that repeatedly amplifies error, rather than patching the most visible local symptom.
 
-## Repository Summary
+## At A Glance
 
-- **Scope.** Can agent rollout failures be repaired by correcting the causal amplifier rather than the final symptom?
-- **Method.** WM-SAR identifies stable repair regions in failure graphs and compares subgraph repair against pointwise correction.
-- **Contents.** Synthetic and LLM experiments, budget studies, benchmark topology tests, API references, and real-attribution support.
+| Artifact review question | Entry point |
+| --- | --- |
+| Research question | Can agent rollout failures be repaired by correcting the causal amplifier rather than the final symptom? |
+| Core method | WM-SAR identifies stable repair regions in failure graphs and compares subgraph repair against pointwise correction. |
+| Included artifacts | Synthetic and LLM experiments, budget studies, benchmark topology tests, API references, and real-attribution support. |
+| Fast validation | `python experiments/run_all.py` |
+| Paper-scale reproduction | Synthetic, parametric, subgraph-vs-pointwise, spectral, context-limited, and optional LLM repair experiments. |
 
 ## Paper
 
