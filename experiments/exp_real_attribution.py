@@ -73,13 +73,6 @@ def task_to_graph(task: dict) -> tuple[nx.DiGraph, str, str]:
     mistake_agent = task.get("mistake_agent", "") or ""
     failure_desc = task.get("mistake_reason", "") or "Multi-agent task failed"
 
-    # IMPORTANT (no-leakage policy):
-    # The methods evaluated downstream MUST NOT see mistake_step / mistake_agent
-    # in any node attribute. The ONLY observable signal we expose is that
-    # the FINAL message in the conversation is the visible failure point
-    # (success_flag = 0 at the sink). All upstream nodes look healthy from
-    # an outside observer's perspective — that's the realistic deployment
-    # setting and is what spec §3.3 INFEASIBLE caveat refers to.
     G = nx.DiGraph()
     node_ids: list[str] = []
     n_msgs = len(history)

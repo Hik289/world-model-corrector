@@ -337,11 +337,6 @@ def fig_cascade_gain():
     _save(fig, "fig_cascade_gain.png")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  5. LLM single-API comparison panel  ──── exp_agent_llm.json
-#     and 6. Multi-API panel ──── exp_multiapi.json
-#     Also merged: fig_llm_multiapi.png (two-panel comparison)
-# ═══════════════════════════════════════════════════════════════════════════
 def _plot_llm_panel(ax, d_llm, with_legend=True):
     """Single-API horizontal bar (Rec-Exact/Rec-Type/Rec-2Hop) + token text."""
     methods_in = ["Greedy-Point-LLM", "Window-4-LLM", "Window-8-LLM",

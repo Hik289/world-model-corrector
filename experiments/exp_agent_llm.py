@@ -48,12 +48,6 @@ from wm_sar.act_text import (
 import networkx as nx
 
 
-# ── TraceScan baselines (spec §11.5 / §13 E5) ─────────────────────────────
-# "Trace" = nodes in topological order. TraceScan-w_k shows a window of k
-# consecutive topo-steps centred on the highest-error node. TraceScan-Full
-# shows ALL nodes ordered as a single linear trace (no edge structure shown).
-# LLMRepair-Full-Plan additionally asks for a full repair plan rather than
-# just root-cause identification.
 
 def _topo_order(G: nx.DiGraph) -> list[str]:
     try:
@@ -316,12 +310,6 @@ def main():
                     try:
                         rec = json.loads(line)
                         done_ids.add(rec["instance_id"])
-                        # also rehydrate seed_per_instance for aggregate()
-                        # Note: only per-instance schema is loaded; raw
-                        # 'run_instance' dict is NOT reconstructed (won't
-                        # affect aggregate() because we accumulate from
-                        # build_per_instance, but we DO need aggregate() to
-                        # see rows for the per-method summary).
                     except Exception:
                         pass
             if done_ids:

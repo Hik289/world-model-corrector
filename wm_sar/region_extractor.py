@@ -224,11 +224,6 @@ class WMSAR:
         rho_relief = self._rho_relief(G, region)
         cost = sum(node_cost(G, r) for r in region) + 1.0
 
-        # Score = ErrCover · (1 + κ̄) · ρ_relief / Cost
-        # All three factors are desirable:
-        #   ErrCover: we want to fix high-error nodes
-        #   (1+κ̄):   bonus for nodes that also reduce coupling
-        #   ρ_relief: reduction in post-repair amplification (T2/T4 grounding)
         num = err_cover * (1.0 + kappa_mean) * max(rho_relief, 1e-6)
         return float(num / cost)
 
