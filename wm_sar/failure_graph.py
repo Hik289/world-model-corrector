@@ -109,10 +109,6 @@ def agent_rollout_to_graph(roll: Any) -> nx.DiGraph:
             unc=unc,
         )
 
-        # The predicted_state chain is the dominant error carrier: once the
-        # root cause injects at root_t, error amplifies along transition_to.
-        # Observations / actions / tool calls carry only sensing noise so the
-        # amplification region is a clean connected chain (pred + root-cause node).
         noise = 0.04 + 0.02 * abs(float(np.tanh(t)))
         root_t = min(gt_steps) if gt_steps else -1
         at_root = (t == root_t)
