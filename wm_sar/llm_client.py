@@ -1,19 +1,3 @@
-"""
-llm_client.py — Model API calls for WM-SAR experiments.
-
-The default path reads general model settings from environment variables:
-  LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_BACKEND
-
-Provider-specific arguments and environment variables are still accepted for
-backward compatibility with older experiment scripts.
-
-Usage:
-  client = LLMClient()
-  result = client.locate_error(trace_steps)
-  result = client.repair_region(region_steps)
-  result = client.full_replan(trace_steps)
-"""
-
 from __future__ import annotations
 import os
 import time
@@ -22,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-# ── external deps ──────────────────────────────────────────────────────────
+
 try:
     import openai as _openai
     _OPENAI_AVAILABLE = True
@@ -35,12 +19,12 @@ try:
 except ImportError:
     _GEMINI_AVAILABLE = False
 
-# ── result dataclass ────────────────────────────────────────────────────────
+
 @dataclass
 class LLMResult:
-    identified_steps: list[int]   # steps the LLM identified as root cause
-    repair_summary: str            # one-sentence description of the fix
-    confidence: float              # 0-1 self-reported confidence
+    identified_steps: list[int]
+    repair_summary: str
+    confidence: float
     prompt_tokens: int
     completion_tokens: int
     latency_ms: float
@@ -50,7 +34,7 @@ class LLMResult:
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.completion_tokens
 
-# ── prompt templates ────────────────────────────────────────────────────────
+
 _LOCATE_SYSTEM = (
     "You are an expert agent-failure analyst. "
     "Given a window of an agent's world-model rollout, "
@@ -125,12 +109,11 @@ Identify the root cause step(s) and provide a repair plan. Respond ONLY with val
 }}"""
 
 
-# ── LLM client ──────────────────────────────────────────────────────────────
 class LLMClient:
-    """Unified LLM client with general env-var configuration."""
+
 
     SUPPORTED = {
-        # OpenAI models
+
         "gpt-3.5-turbo":        "openai",
         "gpt-4o-mini":          "openai",
         "gpt-4o":               "openai",
@@ -138,11 +121,11 @@ class LLMClient:
         "gpt-4.1-mini":         "openai",
         "gpt-4.1":              "openai",
         "gpt-4-turbo":          "openai",
-        # Google Gemini models
+
         "gemini-2.5-flash":     "gemini",
         "gemini-2.5-flash-lite":"gemini",
         "gemini-2.5-pro":       "gemini",
-        # legacy aliases kept for API compatibility (will 404 at call time, see note)
+
         "gemini-2.0-flash":     "gemini",
         "gemini-2.0-flash-lite":"gemini",
         "gemini-1.5-flash":     "gemini",
@@ -169,7 +152,7 @@ class LLMClient:
             or os.environ.get("MODEL_NAME")
             or "gpt-4o-mini"
         )
-        # backend can be explicitly set, read from env, or inferred from known aliases
+
         self.backend = (
             backend
             or os.environ.get("LLM_BACKEND")
@@ -186,7 +169,7 @@ class LLMClient:
         if self.max_tokens < 1:
             raise ValueError("max_tokens must be at least 1")
 
-        # initialise backend
+
         if self.backend in {
             "openai",
             "openai-compatible",
@@ -237,9 +220,9 @@ class LLMClient:
         else:
             raise ValueError(f"Unsupported LLM backend: {self.backend}")
 
-    # ── internal call ────────────────────────────────────────────────────────
+
     def _call(self, system: str, user: str) -> tuple[str, int, int, float]:
-        """Returns (raw_text, prompt_tokens, completion_tokens, latency_ms)."""
+
         t0 = time.time()
         for attempt in range(self.max_retries):
             try:
@@ -264,7 +247,7 @@ class LLMClient:
                         contents=prompt,
                     )
                     raw = resp.text or ""
-                    # approximate token counts from usage metadata if available
+
                     usage = getattr(resp, "usage_metadata", None)
                     pt = getattr(usage, "prompt_token_count", len(prompt.split()) * 4 // 3)
                     ct = getattr(usage, "candidates_token_count", len(raw.split()) * 4 // 3)
@@ -280,23 +263,23 @@ class LLMClient:
 
         raise RuntimeError("unreachable")
 
-    # ── parse JSON from LLM output ───────────────────────────────────────────
+
     @staticmethod
     def _parse_json(raw: str) -> dict:
-        """Extract JSON from raw LLM output (handles markdown fences)."""
-        # strip markdown code fences
+
+
         text = re.sub(r"```(?:json)?\n?", "", raw).strip()
-        # find the first {...} block
+
         m = re.search(r"\{.*\}", text, re.DOTALL)
         if m:
             text = m.group(0)
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            # fallback: return empty
+
             return {}
 
-    # ── format steps for LLM ────────────────────────────────────────────────
+
     @staticmethod
     def _format_steps(steps: list[dict]) -> str:
         lines = []
@@ -310,13 +293,13 @@ class LLMClient:
             )
         return "\n".join(lines)
 
-    # ── public API ───────────────────────────────────────────────────────────
+
     def locate_error(
         self,
         steps: list[dict],
         failure_desc: str = "task failed",
     ) -> LLMResult:
-        """Ask LLM to locate the root-cause step(s) in a window of steps."""
+
         steps_text = self._format_steps(steps)
         user = _LOCATE_USER.format(
             n_steps=len(steps),
@@ -340,7 +323,7 @@ class LLMClient:
         region_steps: list[dict],
         failure_desc: str = "task failed",
     ) -> LLMResult:
-        """Ask LLM to repair a connected subgraph region as a unit."""
+
         if not region_steps:
             return LLMResult([], "", 0.5, 0, 0, 0.0, "")
         step_nums = [s.get("step", 0) for s in region_steps]
@@ -370,7 +353,7 @@ class LLMClient:
         all_steps: list[dict],
         failure_desc: str = "task failed",
     ) -> LLMResult:
-        """Ask LLM to locate root cause from the full trace."""
+
         steps_text = self._format_steps(all_steps)
         user = _FULLPLAN_USER.format(
             n_steps=len(all_steps),
@@ -390,7 +373,7 @@ class LLMClient:
         )
 
     def chat(self, system: str, user: str) -> "ChatResult":
-        """Make a generic chat call and return text plus usage metadata."""
+
         raw, pt, ct, lat = self._call(system, user)
         return ChatResult(
             text=raw,
@@ -399,8 +382,6 @@ class LLMClient:
             latency_ms=lat,
         )
 
-
-# ── Generic chat interface ───────────────────────────────────────────────────
 
 @dataclass
 class ChatResult:

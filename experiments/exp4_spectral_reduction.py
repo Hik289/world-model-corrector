@@ -1,11 +1,3 @@
-"""Experiment 4: Spectral Dynamics Reduction (Table 4 + Figure 5).
-
-Mandatory experiment proving WM-SAR is a world-model error-control method:
-it should reduce the graph error-amplification field GEAF, the coupled
-amplification rho(B), the temporal ErrorSlope, and TargetAmplify more than
-scanner / pointwise baselines. Produces a grouped bar chart (Figure 5).
-"""
-
 from __future__ import annotations
 
 import _common as C
@@ -60,7 +52,7 @@ def _figure(rows: list[dict]) -> None:
     fig, ax = plt.subplots(figsize=(9, 5))
     for i, r in enumerate(rows):
         vals = [float(r[m]) for m in metrics]
-        # normalize each metric column to [0,1] for visual comparability
+
         ax.bar(x + i * w, vals, w, label=r["Method"])
     ax.set_xticks(x + w * (len(rows) - 1) / 2)
     ax.set_xticklabels(["ΔGEAF", "Δρ(B)", "ΔErrorSlope"])

@@ -1,17 +1,3 @@
-"""Experiment: Budget Sensitivity.
-
-Fix the repair budget K_max ∈ {2, 3, 5, 7, 8, 10, 12, 15, 20}
-(n=50, seed=42) and measure ρ(B)-reduction for each method.
-
-Hypothesis:
-  WM-SAR reaches near-Oracle ρ-reduction at K≈8 (matching our observation
-  of mean_region_size=8.2 in the main experiment).
-  Engineering methods need K≈25 (full graph) to match WM-SAR.
-
-Key insight: WM-SAR is *budget-efficient* — it extracts maximum spectral
-reduction per node added.
-"""
-
 import argparse, json, os, sys, time
 import numpy as np
 
@@ -31,16 +17,16 @@ K_VALUES = [2, 3, 5, 7, 8, 10, 12, 15, 20]
 
 
 def greedy_topk(G, k):
-    """Greedy-Point: top-k nodes by error."""
+
     nodes = sorted(G.nodes(), key=lambda v: amp.node_error(G, v), reverse=True)
     return set(nodes[:k])
 
 
 def window_k(G, k):
-    """Window-k: k consecutive steps sorted by time_step."""
+
     order = sorted(G.nodes(), key=lambda v: G.nodes[v].get("time_step", 0))
     errors = {v: amp.node_error(G, v) for v in order}
-    # Sliding window of size k, pick the window with highest total error
+
     best_region, best_err = set(), -1
     for i in range(len(order)):
         window = set(order[i:i+k])
@@ -52,7 +38,7 @@ def window_k(G, k):
 
 
 def local_khop(G, k_budget):
-    """Local-kHop: expand from highest-error node until k_budget nodes."""
+
     root = max(G.nodes(), key=lambda v: amp.node_error(G, v))
     region = {root}
     import networkx as nx
@@ -68,18 +54,18 @@ def local_khop(G, k_budget):
 
 
 def wmsar_with_budget(G, k_budget):
-    """WM-SAR with explicit K_max budget."""
+
     cfg = WMSARConfig(max_region_size=k_budget, n_seeds=min(3, k_budget))
     extractor = WMSAR(cfg)
     return extractor.repair_region(G)
 
 
 def oracle_k(G, k_budget):
-    """Oracle: ground-truth region, capped at k_budget nodes."""
+
     gt = G.graph.get("gt_region", set())
     if len(gt) <= k_budget:
         return gt
-    # Take top-k from GT by error
+
     return set(sorted(gt, key=lambda v: amp.node_error(G, v), reverse=True)[:k_budget])
 
 
@@ -112,12 +98,12 @@ def main():
     trees  = generate_calling_trees(n=args.n, seed=args.seed)
     G_list = [t.G for t in trees]
 
-    # Oracle at full budget (no cap)
+
     oracle_full = float(np.mean([
         _evaluate_repair(G, G.graph.get("gt_region", set()), "Oracle").rho_reduction
         for G in G_list
     ]))
-    # WM-SAR at default budget
+
     wmsar_full = float(np.mean([
         _evaluate_repair(G, wm_sar_default(G), "WM-SAR").rho_reduction
         for G in G_list
@@ -166,7 +152,7 @@ def main():
         pct_oracle = 100 * wmsar_r / oracle_full if oracle_full > 0 else 0
         print(f"Greedy={greedy_r:.3f}  Local={local_r:.3f}  WM-SAR={wmsar_r:.3f} ({pct_oracle:.0f}% of Oracle)  [{time.time()-t0:.1f}s]")
 
-    # Print summary
+
     print(f"\n{'='*70}")
     print(f"{'K':>4} {'Greedy':>8} {'Window':>8} {'Local':>8} {'WM-SAR':>8} {'Oracle':>8} {'WM-SAR%':>8}")
     print(f"  {'-'*62}")

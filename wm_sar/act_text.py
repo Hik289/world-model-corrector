@@ -1,37 +1,22 @@
-"""Natural-language description generator for agent calling-tree instances.
-
-Converts numeric node states into human-readable step descriptions so that
-LLMs can reason about agent calling-tree failures.
-
-Each node is described as:
-    "[NodeType] node '{id}': <feature summary>"
-where the feature summary uses the 8-dim state vector:
-    [activation, load, latency, error_prob, throughput, confidence,
-     dependency_ok, success_flag]
-
-The LLM is then asked: given these node descriptions,
-identify which node(s) most likely contain the root cause of the failure.
-"""
-
 from __future__ import annotations
 
 import numpy as np
 import networkx as nx
 
-# Feature names for the 8-dim state vector
+
 FEAT_NAMES = [
     "activation", "load", "latency", "error_prob",
     "throughput", "confidence", "dependency_ok", "success_flag",
 ]
 
-# Thresholds for semantic labels
+
 HIGH = 0.7
 LOW  = 0.3
 
 
 def _state_to_sentence(node_id: str, node_type: str, state: list | np.ndarray,
                         error: float, is_root_cause: bool = False) -> str:
-    """Convert an 8-dim state vector to a human-readable sentence."""
+
     if state is None or len(state) < 8:
         state = [1.0, 0.3, 0.1, 0.0, 0.9, 0.9, 1.0, 1.0]
     s = list(state)
@@ -90,17 +75,8 @@ def tree_to_text(
     max_nodes: int = 30,
     include_edges: bool = True,
 ) -> tuple[str, list[str]]:
-    """Convert failure graph to structured text for LLM.
 
-    Args:
-        G: failure graph with node attrs (node_type, err, state, etc.)
-        selected_nodes: if given, only describe these nodes (the repair region)
-        max_nodes: cap number of nodes shown
-        include_edges: whether to include edge descriptions
 
-    Returns:
-        (text_description, ordered_node_ids)
-    """
     try:
         topo = list(nx.topological_sort(G))
     except Exception:
@@ -145,10 +121,8 @@ def tree_to_text(
 def build_locate_prompt(
     tree_text: str, node_list: list[str], G: nx.DiGraph
 ) -> tuple[str, str]:
-    """Build the LLM prompt for root-cause identification.
 
-    Returns: (system_prompt, user_prompt)
-    """
+
     system = (
         "You are an expert AI agent failure analyst. "
         "You will receive a report of a failed multi-agent calling-tree. "
@@ -178,10 +152,8 @@ def build_repair_prompt(
     tree_text: str, node_list: list[str], G: nx.DiGraph,
     located_root: list[str] | None = None,
 ) -> tuple[str, str]:
-    """Build the LLM prompt for repair planning.
 
-    Returns: (system_prompt, user_prompt)
-    """
+
     system = (
         "You are an expert AI agent repair system. "
         "You receive a connected subgraph region identified by graph error amplification analysis. "
@@ -209,11 +181,8 @@ def build_repair_prompt(
 
 def parse_locate_response(response_text: str, true_root: str,
                            G: nx.DiGraph) -> dict:
-    """Parse the LLM's root-cause identification response.
 
-    Recovery: any identified node of same node_type as root cause, or within
-    2 hops in the graph, counts as a match (±tolerance).
-    """
+
     import json, re
 
     result = {
@@ -226,27 +195,26 @@ def parse_locate_response(response_text: str, true_root: str,
         "raw": response_text[:500],
     }
 
-    # Try to parse JSON
+
     try:
-        # strip markdown code fences
+
         clean = re.sub(r"```[a-z]*\n?", "", response_text).strip()
         data = json.loads(clean)
         result["identified_nodes"] = data.get("root_cause_nodes", [])
         result["identified_type"] = data.get("root_cause_type", None)
         result["confidence"] = float(data.get("confidence", 0.5))
     except Exception:
-        # Try to extract node names
+
         matches = re.findall(r"'([a-z]+_\d+)'|\"([a-z]+_\d+)\"", response_text)
         result["identified_nodes"] = list(set(m[0] or m[1] for m in matches))
 
     true_type = G.nodes[true_root].get("node_type", "") if true_root in G else ""
 
-    # Exact recovery
+
     if true_root in result["identified_nodes"]:
         result["recovered_exact"] = True
 
-    # Type recovery (correct node type, even if wrong specific node)
-    # Case-insensitive comparison
+
     if (result["identified_type"] or "").lower() == true_type.lower():
         result["recovered_type"] = True
     for nid in result["identified_nodes"]:
@@ -254,7 +222,7 @@ def parse_locate_response(response_text: str, true_root: str,
             result["recovered_type"] = True
             break
 
-    # 2-hop recovery (within 2 hops of root cause)
+
     if true_root in G:
         hop2 = {true_root}
         und = G.to_undirected(as_view=True)

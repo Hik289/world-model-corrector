@@ -1,34 +1,3 @@
-"""Multi-API Comparison Experiment.
-
-Compare WM-SAR vs engineering baselines across different LLM APIs:
-    gpt-4o-mini      — OpenAI established cheap baseline
-    gpt-4o           — OpenAI flagship-tier
-    gemini-2.5-flash — Google fast / cheap
-
-(Wave-B: human researcher restricted us to {gpt-4o, gpt-4o-mini,
- gemini-2.5-flash}. The earlier gpt-4.1-nano / gpt-4.1-mini cells
- from REVISION are kept in exp_multiapi_pre_wave_b.json only.)
-
-For each model × method pair, measure:
-    Rec-Exact   : exact root-cause node identified
-    Rec-Type    : correct node type identified
-    Rec-2Hop    : within 2 hops of root cause
-    Tokens      : prompt + completion tokens
-    Latency     : ms per call
-
-Key claim: WM-SAR's region selection advantage is LLM-AGNOSTIC.
-All LLMs benefit from being shown the GEAF-guided causal region vs. a
-random/greedy selection. Stronger models improve all methods, but
-WM-SAR's relative advantage (Rec-Exact gap) is maintained or grows.
-
-Methods compared (using same prompts):
-    Greedy-Point-LLM  (1 node)
-    Window-4-LLM      (4 nodes, context-limited)
-    TopK-5-LLM        (5 nodes, disconnected)
-    LocalRepair-2Hop  (18+ nodes, large context)
-    WM-SAR-LLM        (7-8 nodes, amplification-guided)
-"""
-
 import argparse
 import json
 import os
@@ -47,16 +16,16 @@ from wm_sar.act_text import tree_to_text, build_locate_prompt, parse_locate_resp
 
 import networkx as nx
 
-# ── Models to compare ────────────────────────────────────────────────────────
+
 MODELS = {
     "gpt-4o-mini":      {"backend": "openai", "model": "gpt-4o-mini"},
     "gpt-4o":           {"backend": "openai", "model": "gpt-4o"},
     "gemini-2.5-flash": {"backend": "gemini", "model": "gemini-2.5-flash"},
 }
 
-# ── Methods to compare ────────────────────────────────────────────────────────
+
 def get_regions(G: nx.DiGraph) -> dict[str, set]:
-    """Pre-compute all repair regions for a graph (model-agnostic)."""
+
     extractor = WMSAR(WMSARConfig())
     return {
         "Greedy-Point":     greedy_point(G, K=1).selected_nodes,
@@ -88,13 +57,8 @@ def call_llm_region(G, region, true_root, client, method_name) -> dict:
 
 def run_one_model(model_key: str, cfg: dict, trees, n: int, verbose=True,
                   seed: int = 42):
-    """Run all methods on n trees with one model.
 
-    Returns:
-        (per_method_results, per_instance_rows)
-        per_method_results: {method: [row, ...]}  (compat with aggregate_model)
-        per_instance_rows:  [{instance_id, true_root, n_nodes, results}, ...]
-    """
+
     try:
         client = LLMClient(
             model=cfg["model"],
@@ -144,7 +108,7 @@ def run_one_model(model_key: str, cfg: dict, trees, n: int, verbose=True,
                     "confidence":  float(r.get("confidence", 0.0)),
                 }
             except Exception:
-                pass  # skip failed calls
+                pass
         per_instance.append(inst_rec)
 
     if verbose:
@@ -201,7 +165,7 @@ def main():
         all_model_results[model_key] = aggregate_model(raw)
         per_instance_rows.extend(per_inst)
 
-    # ── Print comparison table ───────────────────────────────────────────────
+
     methods = ["Greedy-Point", "TopK-5", "Window-4", "LocalRepair-2Hop", "WM-SAR"]
     model_keys = list(all_model_results.keys())
 
@@ -228,7 +192,7 @@ def main():
             row += f"  {v:>14.0f}"
         print(row)
 
-    # ── WM-SAR advantage (Rec-Exact gap vs best baseline) ───────────────────
+
     print("\n  WM-SAR Rec-Exact advantage over best engineering baseline:")
     for k in model_keys:
         wmsar = all_model_results[k].get("WM-SAR", {}).get("rec_exact", 0)
@@ -238,7 +202,7 @@ def main():
         print(f"    {k:<20}  WM-SAR={wmsar:.3f}  best_eng={best_eng:.3f}  "
               f"gap={wmsar-best_eng:+.3f}")
 
-    # ── Save ─────────────────────────────────────────────────────────────────
+
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     output = {
         "n": args.n,

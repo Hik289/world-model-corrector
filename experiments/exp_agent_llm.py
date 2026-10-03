@@ -1,30 +1,3 @@
-"""LLM Repair Experiment on Agent Calling-Tree Dataset.
-
-All methods use the configured model API for the ACTUAL repair call.
-They differ ONLY in how many / which nodes they show to the LLM.
-
-Engineering baselines (pointwise / context-limited):
-    Greedy-Point-LLM  : Show LLM only the single highest-error node
-    Window-4-LLM      : Show LLM the 4 consecutive steps with highest avg error
-    Window-8-LLM      : Show LLM 8 consecutive steps
-    LocalRepair-2Hop-LLM : Show LLM 2-hop neighbourhood of highest-error node
-    Full-Graph-LLM    : Show LLM the entire graph (expensive reference)
-
-WM-SAR (proposed):
-    WM-SAR-LLM        : Graph analysis selects 8-node connected region → ONE LLM call
-
-All methods are evaluated on:
-    Rec-Exact     : LLM identified exact root-cause node
-    Rec-Type      : LLM identified correct root-cause node type
-    Rec-2Hop      : LLM identified a node within 2 hops of root cause
-    #Tokens       : tokens consumed per rollout
-    #LLM-Calls    : number of LLM API calls
-    Region-Size   : number of nodes shown to LLM
-
-Key claim: WM-SAR-LLM achieves comparable or better Rec-Type/Rec-2Hop
-while consuming fewer tokens (smaller context = only the relevant region).
-"""
-
 import argparse
 import json
 import os
@@ -48,7 +21,6 @@ from wm_sar.act_text import (
 import networkx as nx
 
 
-
 def _topo_order(G: nx.DiGraph) -> list[str]:
     try:
         return list(nx.topological_sort(G))
@@ -58,7 +30,7 @@ def _topo_order(G: nx.DiGraph) -> list[str]:
 
 
 def _tracescan_window(G: nx.DiGraph, w: int) -> set[str]:
-    """Return the topo-window of size w centred on the highest-error node."""
+
     topo = _topo_order(G)
     errs = [(float(G.nodes[v].get("err", 0.0)), i, v) for i, v in enumerate(topo)]
     if not errs:
@@ -66,13 +38,13 @@ def _tracescan_window(G: nx.DiGraph, w: int) -> set[str]:
     _, ctr_i, _ = max(errs)
     lo = max(0, ctr_i - w // 2)
     hi = min(len(topo), lo + w)
-    lo = max(0, hi - w)  # left-align if hit right edge
+    lo = max(0, hi - w)
     return set(topo[lo:hi])
 
 
 def _build_full_plan_prompt(tree_text: str, node_list: list[str]) -> tuple[str, str]:
-    """Stronger prompt: identify root cause AND propose corrective actions
-    for every affected node. Mirrors spec's LLMRepair-Full-Plan baseline."""
+
+
     system = (
         "You are an expert AI agent failure analyst and repair planner. "
         "You will receive a complete report of a failed multi-agent calling-tree. "
@@ -104,15 +76,8 @@ def _call_llm_on_region(
     prompt_builder=build_locate_prompt,
     include_edges: bool = True,
 ) -> dict:
-    """Core: show region to LLM, ask for root cause, parse response.
 
-    Args:
-        prompt_builder: callable (tree_text, node_list, G) -> (system, user).
-          Default = build_locate_prompt; for LLMRepair-Full-Plan we swap to
-          _build_full_plan_prompt which asks for a repair plan too.
-        include_edges: whether to include edge structure in serialisation.
-          False for TraceScan-* baselines (linear-trace view, no graph topo).
-    """
+
     text, node_list = tree_to_text(G, selected_nodes=region,
                                     include_edges=include_edges,
                                     max_nodes=max(len(region), 30))
@@ -138,48 +103,46 @@ def _call_llm_on_region(
 
 
 def run_instance(G: nx.DiGraph, true_root: str, client: LLMClient) -> dict:
-    """Run all methods on a single graph instance."""
+
     results = {}
 
-    # ── Engineering: Greedy-Point (show 1 node) ──────────────────────────
+
     rr = greedy_point(G, K=1)
     results["Greedy-Point-LLM"] = _call_llm_on_region(
         G, rr.selected_nodes, true_root, client, "Greedy-Point-LLM")
 
-    # ── Engineering: TopK-5 (show 5 nodes) ───────────────────────────────
+
     rr = topk_point(G, K=5)
     results["TopK-5-LLM"] = _call_llm_on_region(
         G, rr.selected_nodes, true_root, client, "TopK-5-LLM")
 
-    # ── Engineering: Window-4 ─────────────────────────────────────────────
+
     rr = window_repair(G, window=4)
     results["Window-4-LLM"] = _call_llm_on_region(
         G, rr.selected_nodes, true_root, client, "Window-4-LLM")
 
-    # ── Engineering: Window-8 ─────────────────────────────────────────────
+
     rr = window_repair(G, window=8)
     results["Window-8-LLM"] = _call_llm_on_region(
         G, rr.selected_nodes, true_root, client, "Window-8-LLM")
 
-    # ── Engineering: LocalRepair-2Hop ─────────────────────────────────────
+
     rr = local_khop(G, k=2)
     results["LocalRepair-2Hop-LLM"] = _call_llm_on_region(
         G, rr.selected_nodes, true_root, client, "LocalRepair-2Hop-LLM")
 
-    # ── Full-Graph reference (expensive) ─────────────────────────────────
+
     full_region = set(G.nodes())
     results["Full-Graph-LLM"] = _call_llm_on_region(
         G, full_region, true_root, client, "Full-Graph-LLM")
 
-    # ── WM-SAR (proposed) ─────────────────────────────────────────────────
+
     extractor = WMSAR(WMSARConfig())
     region = extractor.repair_region(G)
     results["WM-SAR-LLM"] = _call_llm_on_region(
         G, region, true_root, client, "WM-SAR-LLM")
 
-    # ── spec §11.5 / §13 E5 baselines: TraceScan + LLMRepair-Full-Plan ───
-    # Note: TraceScan-w4 ≡ Window-4-LLM (highest-error topo-centred window),
-    # so we skip w4 here to avoid duplication.
+
     for w in (1, 2):
         results[f"TraceScan-w{w}-LLM"] = _call_llm_on_region(
             G, _tracescan_window(G, w), true_root, client,
@@ -195,14 +158,14 @@ def run_instance(G: nx.DiGraph, true_root: str, client: LLMClient) -> dict:
         G, set(G.nodes()), true_root, client,
         "LLMRepair-Full-Plan-LLM",
         prompt_builder=_build_full_plan_prompt,
-        include_edges=True)  # plan needs graph context
+        include_edges=True)
 
     return results
 
 
 def aggregate(all_results: list[dict]) -> dict[str, dict]:
-    """Aggregate per-instance results into summary statistics."""
-    # Collect every method that appears in any instance (union, not just first)
+
+
     methods = sorted({m for r in all_results for m in r.keys()})
     summaries = {}
     for m in methods:
@@ -226,9 +189,8 @@ def aggregate(all_results: list[dict]) -> dict[str, dict]:
 
 
 def build_per_instance(per_instance_rows: list[dict]) -> list[dict]:
-    """Convert internal per-instance results into the schema requested by DS:
-       [{instance_id, true_root, n_nodes, results: {method: {...}}}, ...]
-    Numeric fields are JSON-safe (bool→int where it matters)."""
+
+
     out = []
     for row in per_instance_rows:
         rec = {
@@ -283,13 +245,11 @@ def main():
 
     client = LLMClient(model=args.model, temperature=0.0, max_tokens=512)
 
-    all_per_instance = []   # list of {instance_id, seed, true_root, ..., results}
-    all_results      = []   # flat list of run_instance() dicts for aggregate()
+    all_per_instance = []
+    all_results      = []
     per_seed_outputs = {}
 
-    # Crash-safe per-instance JSONL append (lesson from a rate-limit abort:
-    # in-memory only state was lost). Each instance is flushed to disk as
-    # soon as it completes.
+
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
     for seed in seeds:
@@ -299,7 +259,7 @@ def main():
         seed_results = []
         jsonl_path = args.out.replace(".json", f"_seed{seed}.jsonl")
 
-        # Resume support: load already-completed instance ids from JSONL
+
         done_ids: set[str] = set()
         if args.resume and os.path.exists(jsonl_path):
             with open(jsonl_path) as f:
@@ -316,11 +276,11 @@ def main():
                 print(f"    [resume] {len(done_ids)} instances already in "
                       f"{jsonl_path}; will skip those.")
         elif not args.resume:
-            # Fresh run: truncate any stale JSONL
+
             with open(jsonl_path, "w") as f:
                 pass
 
-        # Re-populate seed_per_instance from JSONL so aggregate() can use it
+
         if done_ids:
             with open(jsonl_path) as f:
                 for line in f:
@@ -328,7 +288,7 @@ def main():
                     if not line:
                         continue
                     rec = json.loads(line)
-                    # build a pseudo-row matching the live format
+
                     pseudo_res = {}
                     for meth, r in rec["results"].items():
                         pseudo_res[meth] = {
@@ -377,7 +337,7 @@ def main():
                 }
                 seed_per_instance.append(row)
                 all_per_instance.append(row)
-                # JSONL append + flush + fsync — crash-safe persistence
+
                 jsonl_row = build_per_instance([row])[0]
                 with open(jsonl_path, "a") as f:
                     f.write(json.dumps(jsonl_row) + "\n")
@@ -391,7 +351,7 @@ def main():
             except Exception as e:
                 print(f"ERROR: {e}")
 
-        # Per-seed output file (full JSON aggregate)
+
         if seed_results:
             seed_out = args.out.replace(".json", f"_seed{seed}.json")
             seed_payload = {
@@ -433,7 +393,7 @@ def main():
               f"{s.get('rec_exact',0):>9.3f}  "
               f"{s.get('mean_tokens',0):>7.0f}  {s.get('mean_region_size',0):>5.1f}")
 
-    # Per-seed Rec-Exact for WM-SAR-LLM (std across seeds = health signal)
+
     per_seed_wmsar = {}
     if len(seeds) > 1:
         print("\n  Per-seed Rec-Exact for WM-SAR-LLM:")

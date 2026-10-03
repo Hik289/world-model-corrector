@@ -1,23 +1,3 @@
-"""Repair baselines.
-
-All "LLM" repairers are **simulated**: given a context window, the repairer
-picks the highest-error item(s) inside that window (no real LLM call). The whole
-point of the experiment is that short context windows are centered on the
-*visible* failure, so they miss the root cause that lies earlier in the
-target-reachable cone.
-
-Every baseline returns a :class:`RepairPlan` carrying the repaired node set, the
-simulated token cost, the number of pointwise edits, and a latency estimate.
-
-Token-cost model (Section 11.3, simulated; base_tokens = 50/node):
-    TraceScan-w1 :  1*1  * base  per edit
-    TraceScan-w2 :  2*2  * base  per edit
-    TraceScan-w4 :  4*4  * base  per edit
-    TraceScan-Full        : |V| * base       per edit
-    LLMRepair-Full-Plan   : |V| * base * 3    (single suffix-replan call)
-    WM-SAR  : |region| * base + 0.2*|V|*base  (scored once, one subgraph)
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,8 +9,8 @@ from .failure_graph import node_error, node_unc
 from .region_extractor import WMSAR, WMSARConfig
 
 BASE_TOKENS = 50
-LATENCY_PER_KTOK = 0.8     # seconds per 1000 tokens
-LATENCY_PER_EDIT = 0.05    # per pointwise diagnosis round-trip
+LATENCY_PER_KTOK = 0.8
+LATENCY_PER_EDIT = 0.05
 
 
 @dataclass
@@ -53,7 +33,7 @@ def _failure_time(G: nx.DiGraph) -> int:
 
 
 def _window_nodes(G: nx.DiGraph, w: int) -> list[str]:
-    """Trace items within w steps of the *visible* failure (Section 11.1)."""
+
     ft = _failure_time(G)
     return [v for v, d in G.nodes(data=True)
             if abs(int(d.get("time_step", 0)) - ft) <= w]
@@ -63,11 +43,6 @@ def _topk_by(G: nx.DiGraph, key, k: int, pool=None) -> list[str]:
     pool = pool if pool is not None else list(G.nodes())
     pool = [v for v in pool if v != G.graph.get("t_star")]
     return [v for v in sorted(pool, key=key, reverse=True)[:k]]
-
-
-# ---------------------------------------------------------------------------
-# Context-limited pointwise scanners
-# ---------------------------------------------------------------------------
 
 
 def trace_scan_window(G: nx.DiGraph, w: int, budget: int = 4) -> RepairPlan:
@@ -90,17 +65,12 @@ def trace_scan_full(G: nx.DiGraph, budget: int = 4) -> RepairPlan:
 
 
 def llm_repair_full_plan(G: nx.DiGraph) -> RepairPlan:
-    """Sees the full trace and rewrites the whole target-reachable suffix.
-    High-cost upper baseline (single big call)."""
+
+
     reach = amp.target_reachable(G)
     cost = G.number_of_nodes() * BASE_TOKENS * 3
     return RepairPlan("LLMRepair-Full-Plan", set(reach), cost, 1,
                       is_subgraph=True, latency=_latency(cost, 1), window=None)
-
-
-# ---------------------------------------------------------------------------
-# Simple pointwise heuristics
-# ---------------------------------------------------------------------------
 
 
 def last_error_point(G: nx.DiGraph) -> RepairPlan:
@@ -130,11 +100,6 @@ def rule_scanner_point(G: nx.DiGraph) -> RepairPlan:
     pick = max(cand, key=lambda v: node_error(G, v))
     cost = BASE_TOKENS
     return RepairPlan("RuleScanner-Point", {pick}, cost, 1, False, _latency(cost, 1), 1)
-
-
-# ---------------------------------------------------------------------------
-# Pointwise graph repair (Top-B node/edge style)
-# ---------------------------------------------------------------------------
 
 
 def top_b_nodes(G: nx.DiGraph, budget: int = 4) -> RepairPlan:
@@ -195,11 +160,6 @@ def target_cone_repair(G: nx.DiGraph, budget: int = 4) -> RepairPlan:
                       _latency(cost, len(picks)))
 
 
-# ---------------------------------------------------------------------------
-# Subgraph heuristics
-# ---------------------------------------------------------------------------
-
-
 def _khop_ball(G: nx.DiGraph, center: str, k: int) -> set[str]:
     und = G.to_undirected(as_view=True)
     ball = nx.single_source_shortest_path_length(und, center, cutoff=k)
@@ -252,11 +212,6 @@ def target_cone_subgraph(G: nx.DiGraph) -> RepairPlan:
     return RepairPlan("TargetCone-Subgraph", nodes, cost, 1, True, _latency(cost, 1))
 
 
-# ---------------------------------------------------------------------------
-# Upper bounds
-# ---------------------------------------------------------------------------
-
-
 def oracle_region(G: nx.DiGraph) -> RepairPlan:
     nodes = set(G.graph.get("gt_region", set()))
     nodes.discard(G.graph.get("t_star"))
@@ -271,11 +226,6 @@ def full_replan(G: nx.DiGraph) -> RepairPlan:
     return RepairPlan("FullReplan", nodes, cost, 1, True, _latency(cost, 1))
 
 
-# ---------------------------------------------------------------------------
-# WM-SAR (the proposed method)
-# ---------------------------------------------------------------------------
-
-
 def wm_sar(G: nx.DiGraph, config: WMSARConfig | None = None,
            budget: float = 14.0, short_prompt: bool = False) -> RepairPlan:
     extractor = WMSAR(config)
@@ -285,18 +235,13 @@ def wm_sar(G: nx.DiGraph, config: WMSARConfig | None = None,
     region_cost = len(region) * BASE_TOKENS
     cost = region_cost + scoring_overhead
     if short_prompt:
-        cost += 2 * BASE_TOKENS    # compact region-summary repair prompt
+        cost += 2 * BASE_TOKENS
     name = "WM-SAR+ShortPrompt" if short_prompt else "WM-SAR"
     return RepairPlan(name, region, cost, 1, True, _latency(cost, 1))
 
 
-# ---------------------------------------------------------------------------
-# Registry
-# ---------------------------------------------------------------------------
-
-
 def all_baselines(G: nx.DiGraph, budget: int = 4) -> dict[str, RepairPlan]:
-    """Run the full baseline suite (excluding WM-SAR) on a graph."""
+
     plans = [
         last_error_point(G),
         first_failed_call_point(G),

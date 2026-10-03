@@ -1,12 +1,3 @@
-"""Experiment 3: Subgraph vs Pointwise Repair (Table 3).
-
-Question: is repairing a connected amplification subgraph better than repairing
-top nodes/edges one by one? Compares Top-B Nodes/Edges/Mixed and a k-hop
-subgraph against WM-SAR's region. Key signal: local inconsistency after repair
-(pointwise edits leave dangling corrupted neighbors; the subgraph repair does
-not) and target-cone error reduction.
-"""
-
 from __future__ import annotations
 
 import _common as C
@@ -19,7 +10,7 @@ COLUMNS = ["Method", "Recovery", "TargetConeErrRed", "PDred",
 
 
 def run(verbose: bool = True) -> list[dict]:
-    # combine both domains for a broad subgraph-vs-pointwise comparison
+
     _, agent_graphs, gwm_graphs = C.build_dataset()
     graphs = agent_graphs + gwm_graphs
     methods = {

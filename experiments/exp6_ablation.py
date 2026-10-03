@@ -1,12 +1,3 @@
-"""Experiment 6: Region Extraction Ablation (Table 6).
-
-Removes one WM-SAR component at a time (target-aware amplification, node-edge
-coupling, uncertainty, region growing, region pruning) and a pointwise-GEA-only
-variant. Reports recovery, dGEAF, dErrorSlope, and propagation-depth reduction.
-Expectation: region growing and target-aware amplification are essential;
-coupling matters most for dynamic-edge / parametric failures.
-"""
-
 from __future__ import annotations
 
 import _common as C

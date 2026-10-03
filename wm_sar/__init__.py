@@ -1,10 +1,3 @@
-"""WM-SAR: World-Model-Guided Subgraph Amplification Repair.
-
-A research codebase for repairing failed world-model rollouts by locating and
-correcting error-amplifying subgraphs, rather than scanning the last failure or
-repairing individual nodes/edges pointwise.
-"""
-
 from . import (
     amplification,
     baselines,

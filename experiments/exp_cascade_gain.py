@@ -1,17 +1,3 @@
-"""Experiment: Cascade Gain Sensitivity.
-
-Vary cascade gain α ∈ {0.7, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4}
-(n=50, seed=42) and measure ρ(B)-reduction for key methods.
-
-Hypothesis (from T4):
-  When γ·ρ(B) > 1 (super-linear regret regime), WM-SAR's advantage
-  over engineering methods GROWS because:
-  (a) ρ(B) increases with α → T2 coupling becomes stronger
-  (b) Engineering methods that ignore coupling are increasingly inadequate
-
-Key claim: WM-SAR advantage = (ρ_WM-SAR - ρ_best_eng) grows monotonically with α.
-"""
-
 import argparse, hashlib, json, os, sys, time
 import numpy as np
 
@@ -30,24 +16,24 @@ KEY_METHODS = ["Greedy-Point(K=1)", "Window-4-Point", "TopK-Point(K=5)",
 
 
 def inject_with_gain(G_orig, alpha: float):
-    """Re-cascade errors with a new gain α (keeps graph topology + root cause)."""
+
     import copy
     G = copy.deepcopy(G_orig)
     root = G.graph.get("gt_region", set())
-    root_nodes = sorted(root)  # nodes with original error
+    root_nodes = sorted(root)
 
-    # Reset all errors
+
     for n in G.nodes():
         G.nodes[n]["err"] = 0.0
 
-    # Re-inject with new gain
+
     if not root_nodes:
         return G
-    # Set root cause error
-    rc = root_nodes[0]
-    G.nodes[rc]["err"] = 0.6  # canonical magnitude
 
-    # BFS cascade with new alpha
+    rc = root_nodes[0]
+    G.nodes[rc]["err"] = 0.6
+
+
     visited = {rc}
     queue = [rc]
     stable_seed = int.from_bytes(
@@ -88,7 +74,7 @@ def main():
 
     print(f"\n{'='*60}\n  Cascade Gain Sensitivity (n={args.n})\n{'='*60}")
 
-    # Generate base trees once
+
     trees = generate_calling_trees(n=args.n, seed=args.seed)
 
     output = {"alphas": ALPHA_VALUES, "n": args.n, "seed": args.seed, "results": {}}
@@ -97,13 +83,13 @@ def main():
         print(f"\n  α={alpha:.2f} ...", end=" ", flush=True)
         t0 = time.time()
 
-        # Re-cascade with this alpha
+
         G_list = [inject_with_gain(t.G, alpha) for t in trees]
 
-        # Engineering baselines
+
         summaries = run_all_baselines(G_list, verbose=False)
 
-        # WM-SAR
+
         wmsar_results = [wmsar_result(G) for G in G_list]
         wmsar_valid = [r for r in wmsar_results if r is not None]
         if wmsar_valid:
@@ -114,7 +100,7 @@ def main():
                 "mean_slope":         float(np.mean([r.growth_slope_after for r in wmsar_valid])),
             }
 
-        # Average ρ(B) before any repair
+
         rho_before = float(np.mean([
             amp.rho_B(G, set(G.nodes())) for G in G_list
         ]))
@@ -124,13 +110,13 @@ def main():
             "summaries": {m: summaries[m] for m in KEY_METHODS if m in summaries},
         }
 
-        # Quick print
+
         wmsar_rr = summaries.get("WM-SAR", {}).get("mean_rho_reduction", 0)
         best_eng = max(summaries.get(m, {}).get("mean_rho_reduction", 0)
                        for m in KEY_METHODS if m != "WM-SAR")
         print(f"ρ(B)={rho_before:.3f}  WM-SAR={wmsar_rr:.3f}  gap={wmsar_rr-best_eng:+.3f}  [{time.time()-t0:.1f}s]")
 
-    # Print summary table
+
     print(f"\n{'='*65}")
     print(f"  {'α':>5}  {'ρ(B)':>6}  {'Greedy':>7}  {'LR-2H':>6}  {'LR-3H':>6}  {'WM-SAR':>7}  {'Gap':>6}")
     print(f"  {'-'*60}")

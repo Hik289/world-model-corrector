@@ -1,11 +1,3 @@
-"""Experiment: WM-SAR on SWE-bench / WebArena / AgentBench-OS topologies.
-
-Follows the same pattern as exp_agent.py — passes G_list to run_all_baselines.
-
-Usage:
-    python3 experiments/exp_benchmarks.py --n 50 --seed 42
-"""
-
 import argparse, json, os, sys, time
 import numpy as np
 
@@ -38,7 +30,7 @@ def benchmark_stats(trees) -> dict:
 
 
 def wmsar_summary(trees) -> dict:
-    """Run WM-SAR on each tree and compute summary."""
+
     from wm_sar.engineering_baselines import _evaluate_repair
     results = []
     for t in trees:
@@ -115,9 +107,9 @@ def main():
         G_list = [t.G for t in trees]
         print(f"  Generated {len(trees)} graphs in {time.time()-t0:.1f}s")
 
-        # Engineering baselines
+
         summaries = run_all_baselines(G_list, verbose=True)
-        # WM-SAR
+
         wmsar_s   = wmsar_summary(trees)
         if wmsar_s:
             summaries["WM-SAR"] = wmsar_s

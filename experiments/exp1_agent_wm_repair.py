@@ -1,11 +1,3 @@
-"""Experiment 1: Agent World-Model Failed-Case Repair (Table 1).
-
-Repairs failed agent-world-model rollouts and reports recovery, cost-normalized
-recovery, tokens-per-recovery, propagation-depth reduction, and downstream-error
-reduction. Expectation: WM-SAR recovers more than pointwise / short-context
-repair; TraceScan-Full is competitive but far more expensive.
-"""
-
 from __future__ import annotations
 
 import _common as C

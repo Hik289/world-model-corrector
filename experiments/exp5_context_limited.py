@@ -1,17 +1,3 @@
-"""Experiment 5: Context-Limited Pointwise Repair vs WM-SAR (Table 5 + Figure 6).
-
-Does a pure engineering repairer need longer context or many pointwise edits to
-match WM-SAR? Reports recovery, region localization, token cost, tokens per
-recovery, #edit attempts, post-repair local inconsistency, latency, and
-cost-normalized recovery. Produces the token-cost-vs-recovery scatter (Figure 6).
-
-Expected pattern:
-    TraceScan-w1/w2/w4 -> repair the wrong local symptom (short context)
-    TraceScan-Full     -> better but very high token cost, still pointwise
-    LLMRepair-Full-Plan-> strong but expensive
-    WM-SAR             -> matches/beats recovery with far lower token cost
-"""
-
 from __future__ import annotations
 
 import _common as C

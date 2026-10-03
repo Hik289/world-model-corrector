@@ -1,24 +1,3 @@
-"""Benchmark-specific failure graphs for WM-SAR.
-
-Three benchmarks modelled after published agent trace structures:
-
-  SWE-bench   (Jimenez et al., 2024) -- GitHub issue resolution
-  WebArena    (Zhou et al., 2024)    -- browser-based task agents
-  AgentBench-OS (Liu et al., 2024)  -- OS bash-command pipelines
-
-Key design constraint
----------------------
-Pure DAGs give ρ(B) ≈ 0 because their adjacency-matrix spectral radii
-are zero (no cycles → no eigenvalues > 0).  Real agents have retry /
-feedback edges (TestRunner failure → re-invoke CodeAnalyzer;
-FormValidator failure → re-navigate; Verifier fail → re-run BashNode).
-We add one realistic retry edge per graph to push ρ(B) into the same
-[1.2, 2.5] range observed in the agent-calling-tree testbed.
-
-Interface: each generator returns a list[AgentCallTree], identical to
-generate_calling_trees() in agent_calling_tree.py.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -33,23 +12,19 @@ from .failure_graph import build_from_agent_calling_tree
 from . import amplification as amp
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Shared helpers
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _make_state(rng: np.random.Generator,
                 node_type: str,
                 err_level: float = 0.0) -> np.ndarray:
-    """8-dim state vector matching agent_calling_tree.py FEAT_NAMES."""
+
     s = np.array([
-        1.0,                           # 0 activation
-        float(rng.uniform(0.1, 0.5)),  # 1 load
-        float(rng.uniform(0.05, 0.3)), # 2 latency
-        float(rng.uniform(0.0, 0.05)), # 3 error_prob
-        float(rng.uniform(0.7, 1.0)),  # 4 throughput
-        float(rng.uniform(0.8, 1.0)),  # 5 confidence
-        1.0,                           # 6 dependency_ok
-        1.0,                           # 7 success_flag
+        1.0,
+        float(rng.uniform(0.1, 0.5)),
+        float(rng.uniform(0.05, 0.3)),
+        float(rng.uniform(0.0, 0.05)),
+        float(rng.uniform(0.7, 1.0)),
+        float(rng.uniform(0.8, 1.0)),
+        1.0,
+        1.0,
     ], dtype=float)
 
     if err_level > 0.0:
@@ -73,11 +48,11 @@ def _cascade(G: nx.DiGraph,
              gain: float,
              noise: float,
              rng: np.random.Generator) -> dict[str, float]:
-    """Topological cascade — same logic as agent_calling_tree.py."""
+
     errs: dict[str, float] = {n: 0.0 for n in G.nodes()}
     errs[root] = root_err
 
-    # Use BFS order (handles cycles via visited tracking)
+
     visited: set[str] = set()
     queue = [root]
     visited.add(root)
@@ -106,7 +81,7 @@ def _assemble(G: nx.DiGraph,
               sink: str,
               root: str,
               desc: str) -> AgentCallTree:
-    """Wrap a raw graph into AgentCallTree (mirrors generate_calling_trees)."""
+
     G.graph["t_star"] = sink
     G_f = build_from_agent_calling_tree(G, states, errs, sink)
     horizon_mse = amp.simulate_error_propagation(G_f, repaired=set(), H=32)
@@ -143,37 +118,19 @@ def _assemble(G: nx.DiGraph,
     )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# SWE-bench  (GitHub issue resolution)
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _swe_single(seed: int) -> AgentCallTree:
-    """
-    Topology  (N ≈ 15–22):
-      IssueAnalyzer (planner)
-        ├─► RepoExplorer (executor)
-        └─► FileLocator_0..K-1 (executor)  ← K = 3-5
-              └─► CodeAnalyzer_i_j (checker)   ← 2-3 per file
-      All CodeAnalyzers ─► PatchWriter (executor)
-      PatchWriter ─► TestRunner_0..M-1 (validator)  M = 2-3
-      TestRunners ─► CIChecker (validator)
-      CIChecker   ─► FinalAnswer
 
-    Retry edge (cycle):
-      CIChecker ──► IssueAnalyzer    (CI failure triggers re-analysis)
 
-    Cascade gain α = 1.15 (deep fan-out amplifies errors).
-    """
     rng  = np.random.default_rng(seed)
     GAIN = 1.15; NOISE = 0.04
 
-    K = int(rng.integers(3, 6))   # 3-5 file locators
-    J = int(rng.integers(2, 4))   # 2-3 code analyzers per file
-    M = int(rng.integers(2, 4))   # 2-3 test runners
+    K = int(rng.integers(3, 6))
+    J = int(rng.integers(2, 4))
+    M = int(rng.integers(2, 4))
 
     G = nx.DiGraph()
 
-    # nodes
+
     ia  = "IssueAnalyzer";  G.add_node(ia,  node_type="planner",      time_step=0)
     re  = "RepoExplorer";   G.add_node(re,  node_type="executor",     time_step=1)
     G.add_edge(ia, re, edge_type="calls")
@@ -212,10 +169,10 @@ def _swe_single(seed: int) -> AgentCallTree:
     fa = "FinalAnswer"; G.add_node(fa, node_type="final_answer", time_step=ts + K + 3)
     G.add_edge(ci, fa, edge_type="triggers")
 
-    # ── Retry edge (creates cycle → non-zero ρ(B)) ──
-    G.add_edge(ci, ia, edge_type="errors")   # CI fail → re-analyse issue
 
-    # failure mode
+    G.add_edge(ci, ia, edge_type="errors")
+
+
     modes = ["wrong_file", "wrong_patch", "import_error"]
     mode  = str(rng.choice(modes))
     if mode == "wrong_file":
@@ -237,7 +194,7 @@ def _swe_single(seed: int) -> AgentCallTree:
 
 
 def generate_swe_bench_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTree]:
-    """N SWE-bench failure graphs (15-22 nodes, retry-loop, α=1.15)."""
+
     rng = np.random.default_rng(seed)
     seeds = rng.integers(0, 100_000, size=n).tolist()
     out = []
@@ -249,34 +206,13 @@ def generate_swe_bench_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTree
     return out
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# WebArena  (browser-based task agents)
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _webarena_single(seed: int) -> AgentCallTree:
-    """
-    Topology (N ≈ 9–15, sequential):
-      TaskPlanner (planner)
-        └─► Navigator_1 (executor) ─► PageReader_1 (checker) ─► ContentExtractor_1 (aggregator)
-        └─► Navigator_2 (executor) ─► PageReader_2 (checker) ─► ContentExtractor_2 (aggregator)
-        ...
-      All ContentExtractors ─► FormFiller (executor)
-      FormFiller ─► FormValidator (validator)
-      FormValidator ─► Submitter (executor)
-      Submitter ─► SuccessChecker (validator)
-      SuccessChecker ─► FinalAnswer
 
-    Navigators are chained sequentially (N1→N2→N3).
 
-    Retry edge (cycle):
-      FormValidator ──► Navigator_1   (validation fail → re-navigate)
-
-    Cascade gain α = 1.08 (linear; errors propagate but don't fan out).
-    """
     rng  = np.random.default_rng(seed)
     GAIN = 1.08; NOISE = 0.03
 
-    hops = int(rng.integers(2, 5))   # 2-4 nav hops
+    hops = int(rng.integers(2, 5))
 
     G = nx.DiGraph()
     tp = "TaskPlanner"; G.add_node(tp, node_type="planner", time_step=0)
@@ -313,8 +249,8 @@ def _webarena_single(seed: int) -> AgentCallTree:
     fa = "FinalAnswer";   G.add_node(fa, node_type="final_answer", time_step=ts)
     G.add_edge(sc, fa, edge_type="triggers")
 
-    # ── Retry edge ──
-    G.add_edge(fv, navs[0], edge_type="errors")   # validation fail → re-navigate
+
+    G.add_edge(fv, navs[0], edge_type="errors")
 
     modes = ["wrong_url", "wrong_content", "form_error"]
     mode  = str(rng.choice(modes))
@@ -337,7 +273,7 @@ def _webarena_single(seed: int) -> AgentCallTree:
 
 
 def generate_webarena_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTree]:
-    """N WebArena failure graphs (9-15 nodes, retry-loop, α=1.08)."""
+
     rng = np.random.default_rng(seed)
     seeds = rng.integers(0, 100_000, size=n).tolist()
     out = []
@@ -349,27 +285,9 @@ def generate_webarena_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTree]
     return out
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# AgentBench-OS  (bash pipeline)
-# ──────────────────────────────────────────────────────────────────────────────
-
 def _agentbench_single(seed: int) -> AgentCallTree:
-    """
-    Topology (N ≈ 8–12):
-      Commander (planner)
-        [EnvSetup (executor)]   ← 60 % of instances
-        └─► BashNode_1 (executor) ─► OutputParser_1 (checker)
-        └─► BashNode_2 (executor) ─► OutputParser_2 (checker)   [B1 → B2 pipe]
-        ...
-      All OutputParsers ─► PipelineNode (aggregator)
-      PipelineNode ─► Verifier (validator)
-      Verifier ─► FinalAnswer
 
-    Retry edge (cycle):
-      Verifier ──► Commander   (verification fail → re-plan)
 
-    Cascade gain α = 1.12.
-    """
     rng  = np.random.default_rng(seed)
     GAIN = 1.12; NOISE = 0.035
 
@@ -409,8 +327,8 @@ def _agentbench_single(seed: int) -> AgentCallTree:
     fa = "FinalAnswer";  G.add_node(fa, node_type="final_answer", time_step=ts)
     G.add_edge(vf, fa, edge_type="triggers")
 
-    # ── Retry edge ──
-    G.add_edge(vf, cmd, edge_type="errors")   # verifier fail → re-plan
+
+    G.add_edge(vf, cmd, edge_type="errors")
 
     modes = ["cmd_error", "pipe_error"]
     if has_env:
@@ -437,7 +355,7 @@ def _agentbench_single(seed: int) -> AgentCallTree:
 
 
 def generate_agentbench_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTree]:
-    """N AgentBench-OS failure graphs (8-12 nodes, retry-loop, α=1.12)."""
+
     rng = np.random.default_rng(seed)
     seeds = rng.integers(0, 100_000, size=n).tolist()
     out = []
@@ -448,10 +366,6 @@ def generate_agentbench_graphs(n: int = 50, seed: int = 42) -> list[AgentCallTre
             print(f"  [AgentBench-OS] seed={s} skip: {exc}")
     return out
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Combined interface
-# ──────────────────────────────────────────────────────────────────────────────
 
 BENCHMARK_GENERATORS: dict[str, Any] = {
     "SWE-bench":     generate_swe_bench_graphs,

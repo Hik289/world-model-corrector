@@ -1,10 +1,3 @@
-"""Shared utilities for the WM-SAR experiment scripts.
-
-Centralizes: dataset construction (seeded), failure-graph building, table
-printing/saving, and figure output paths. Importing this module makes the
-``wm_sar`` package importable when scripts are run from anywhere.
-"""
-
 from __future__ import annotations
 
 import csv
@@ -14,13 +7,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# make the project root importable
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from wm_sar import data_generator as dg  # noqa: E402
-from wm_sar import failure_graph as fg  # noqa: E402
+from wm_sar import data_generator as dg
+from wm_sar import failure_graph as fg
 
 SEED = 42
 ANALYSIS_DIR = os.path.join(ROOT, "analysis")
@@ -33,7 +26,7 @@ _CACHE: dict = {}
 
 
 def build_dataset(n_agent: int = 120, n_gwm: int = 80, seed: int = SEED):
-    """Return (dataset, agent_graphs, gwm_graphs), cached per process."""
+
     key = (n_agent, n_gwm, seed)
     if key in _CACHE:
         return _CACHE[key]

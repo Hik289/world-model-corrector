@@ -1,32 +1,3 @@
-"""WM-SAR Region Extraction: GEAF-guided seed → grow → prune.
-
-Core objective (from T2/T4):
-    Select region R ⊆ G_f to MINIMISE post-repair amplification ρ(B_{G_f ∖ R})
-    subject to a repair budget.
-
-Intuition: Engineering methods (Greedy/Local/Window) reduce error at specific
-nodes but leave the COUPLING STRUCTURE intact — ρ(B) barely changes.
-WM-SAR selects a connected subgraph that "cuts" the high-amplification path,
-actually reducing ρ(B_{G∖R}) and suppressing multi-step error growth.
-
-Algorithm:
-    1. SEED  — top-k nodes by e(v) · GEAF_v · (1 + κ_v)
-               κ_v = L_A(v) · M_X(v) is the coupling factor (T2: cross-term)
-               High κ_v means repairing v also reduces ρ(B) super-additively
-
-    2. GROW  — greedily expand: at each step add neighbor u that
-               maximises ΔErrCover(u) + λ₁·Δρ_relief(u) / Cost(u)
-               where ρ_relief(u) = ρ(B_{G∖R}) - ρ(B_{G∖(R∪{u})})
-               i.e., how much does adding u to the repair further reduce
-               post-repair amplification?
-
-    3. PRUNE — remove v from R if it does not lie on any path reaching t_star
-               AND its removal does not increase ρ_relief
-
-    4. SCORE — Score(R) = ErrCover(R) · κ̄(R) · ρ_relief(R) / (1 + Cost(R))
-               where κ̄(R) = mean coupling factor over R
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -38,27 +9,23 @@ from . import amplification as amp
 from .failure_graph import node_cost, node_error
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Config
-# ──────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class WMSARConfig:
-    H: int = 4                    # spectral walk depth (T3 proxy)
-    weight_norm: float = 1.0      # model weight product ≈ ∏_ℓ ‖W_ℓ‖₂
-    max_region_size: int = 20     # budget on region size
-    n_seeds: int = 6              # number of seed nodes
-    lambda1: float = 1.2          # error coverage gain weight
-    lambda2: float = 1.5          # ρ-relief gain weight (coupling reduction)
-    lambda3: float = 0.1          # cost penalty
-    merge_tau: float = 0.5        # Jaccard threshold for region merging
-    gamma: float = 0.95           # planning discount factor (T4)
-    # ablation flags
-    use_geaf: bool = True         # use GEAF in seed scoring (else: error only)
-    use_coupling: bool = True     # use coupling factor κ in seeds & growing
-    use_growing: bool = True      # grow regions (else: seed only = pointwise GEAF)
-    use_pruning: bool = True      # prune non-contributing nodes
-    use_rho_relief: bool = True   # growing objective includes ρ-relief (else: error only)
+    H: int = 4
+    weight_norm: float = 1.0
+    max_region_size: int = 20
+    n_seeds: int = 6
+    lambda1: float = 1.2
+    lambda2: float = 1.5
+    lambda3: float = 0.1
+    merge_tau: float = 0.5
+    gamma: float = 0.95
+
+    use_geaf: bool = True
+    use_coupling: bool = True
+    use_growing: bool = True
+    use_pruning: bool = True
+    use_rho_relief: bool = True
 
     def __post_init__(self):
         if self.H < 1:
@@ -77,10 +44,6 @@ class WMSARConfig:
             raise ValueError("gamma must be in [0, 1]")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Region dataclass
-# ──────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class Region:
     nodes: set = field(default_factory=set)
@@ -93,33 +56,28 @@ class Region:
         return float(sum(node_cost(G, v) for v in self.nodes))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# WMSAR extractor
-# ──────────────────────────────────────────────────────────────────────────────
-
 class WMSAR:
-    """WM-SAR region extractor and scorer."""
+
 
     def __init__(self, config: WMSARConfig | None = None):
         self.cfg = config or WMSARConfig()
-        self._geaf_cache: dict = {}   # node -> GEAF value
-        self._kappa_cache: dict = {}  # node -> coupling factor
+        self._geaf_cache: dict = {}
+        self._kappa_cache: dict = {}
         self._rho_full: float = 0.0
 
     def _precompute(self, G: nx.DiGraph) -> None:
-        """Pre-compute GEAF and coupling factors for all nodes."""
+
         c = self.cfg
         self._geaf_cache = amp.geaf_all(G, H=c.H, weight_norm=c.weight_norm)
         self._kappa_cache = {v: amp.coupling_factor(G, v, c.weight_norm)
                               for v in G.nodes()}
-        # Baseline amplification before any repair.
+
         self._rho_full = amp.rho_B(G, set(G.nodes()), c.weight_norm)
 
     def _rho_relief(self, G: nx.DiGraph, region: set) -> float:
-        """ρ_relief(R) = ρ(B_G) - ρ(B_{G∖R}): how much repair reduces amplification."""
+
         return self._rho_full - amp.rho_B_complement(G, region, self.cfg.weight_norm)
 
-    # ── 1. SEED ──────────────────────────────────────────────────────────────
 
     def seeds(self, G: nx.DiGraph) -> list:
         c = self.cfg
@@ -131,13 +89,12 @@ class WMSAR:
             err = node_error(G, v)
             geaf_v = self._geaf_cache.get(v, 1.0) if c.use_geaf else 1.0
             kappa_v = self._kappa_cache.get(v, 0.0) if c.use_coupling else 0.0
-            # Score: error × GEAF (topology amplification) × (1 + coupling boost)
+
             s = err * max(geaf_v, 1e-9) * (1.0 + kappa_v)
             scored.append((s, v))
         scored.sort(reverse=True)
         return [v for _, v in scored[: c.n_seeds]]
 
-    # ── 2. GROW ──────────────────────────────────────────────────────────────
 
     def grow(self, G: nx.DiGraph, seed: str) -> set:
         c = self.cfg
@@ -148,11 +105,11 @@ class WMSAR:
         und = G.to_undirected(as_view=True)
         t_star = G.graph.get("t_star")
 
-        # Current post-repair amplification
+
         rho_current = amp.rho_B_complement(G, region, c.weight_norm)
 
         for _ in range(c.max_region_size - 1):
-            # Collect frontier (neighbors not yet in region, not t_star)
+
             frontier: set = set()
             for r in region:
                 frontier.update(und.neighbors(r))
@@ -164,9 +121,9 @@ class WMSAR:
             best_u, best_gain = None, -1e9
             for u in sorted(frontier, key=str):
                 cand = region | {u}
-                # ρ-relief: how much does adding u reduce post-repair amplification?
+
                 rho_cand = amp.rho_B_complement(G, cand, c.weight_norm)
-                d_rho_relief = rho_current - rho_cand  # positive = better
+                d_rho_relief = rho_current - rho_cand
 
                 d_err = node_error(G, u) * (1.0 + self._kappa_cache.get(u, 0.0))
                 cost = node_cost(G, u)
@@ -179,7 +136,7 @@ class WMSAR:
                 if gain > best_gain:
                     best_gain, best_u = gain, u
 
-            # Only expand if there's positive marginal gain
+
             if best_u is not None and best_gain > 0.0:
                 region.add(best_u)
                 rho_current = amp.rho_B_complement(G, region, c.weight_norm)
@@ -188,13 +145,12 @@ class WMSAR:
 
         return region
 
-    # ── 3. PRUNE ─────────────────────────────────────────────────────────────
 
     def prune(self, G: nx.DiGraph, region: set) -> set:
         if not self.cfg.use_pruning or len(region) <= 1:
             return region
         t_star = G.graph.get("t_star")
-        # Only keep nodes whose removal increases ρ_complement (i.e., they matter)
+
         pruned = set(region)
         rho_pruned = amp.rho_B_complement(G, pruned, self.cfg.weight_norm)
         for v in sorted(region, key=str):
@@ -208,13 +164,12 @@ class WMSAR:
             ):
                 continue
             rho_smaller = amp.rho_B_complement(G, smaller, self.cfg.weight_norm)
-            # If removing v doesn't increase ρ (no benefit), drop it
+
             if rho_smaller <= rho_pruned + 1e-6:
                 pruned.discard(v)
                 rho_pruned = rho_smaller
         return pruned if pruned else region
 
-    # ── 4. SCORE ─────────────────────────────────────────────────────────────
 
     def score(self, G: nx.DiGraph, region: set) -> float:
         if not region:
@@ -227,7 +182,6 @@ class WMSAR:
         num = err_cover * (1.0 + kappa_mean) * max(rho_relief, 1e-6)
         return float(num / cost)
 
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def candidate_regions(self, G: nx.DiGraph) -> list[Region]:
         self._precompute(G)
@@ -238,7 +192,7 @@ class WMSAR:
             r = self.prune(G, r)
             if r:
                 raw.append(r)
-        # Merge overlapping regions
+
         merged = self._merge(raw)
         out = []
         for r in merged:
@@ -253,7 +207,7 @@ class WMSAR:
         return out
 
     def repair_region(self, G: nx.DiGraph, budget: float | None = None) -> set:
-        """Return the highest-score region within budget."""
+
         regions = self.candidate_regions(G)
         if not regions:
             return set()
@@ -262,13 +216,12 @@ class WMSAR:
         if budget < 0:
             raise ValueError("budget must be non-negative")
 
-        # The method returns one connected repair region, never a disconnected
-        # union of independently grown candidates.
+
         for region in regions:
             if region.cost(G) <= budget:
                 return set(region.nodes)
 
-        # If no complete region fits, return the best affordable singleton.
+
         affordable = {
             node
             for region in regions

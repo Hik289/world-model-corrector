@@ -1,26 +1,3 @@
-"""
-generate_all_figs.py — Regenerate all paper figures FROM REAL experiment results.
-
-Reads JSON files from experiments/results/ and emits paper-ready PNGs to
-figures/ (and they are also copied into paper/ by the caller).
-
-Figures produced:
-  fig_tradeoff.png        ← exp_agent.json           (Pareto: region size vs Rec-Exact-like)
-  fig_llm_multiapi.png    ← exp_agent_llm.json
-                           + exp_multiapi.json       (NEW: merged 2-panel)
-  fig_llm_comparison.png  ← exp_agent_llm.json       (kept for back-compat; same content as
-                                                       panel (a) of fig_llm_multiapi)
-  fig_multiapi.png        ← exp_multiapi.json        (kept for back-compat)
-  fig_budget.png          ← exp_budget.json
-  fig_cascade_gain.png    ← exp_cascade_gain.json
-  fig_rho_reduction.png   ← exp_agent.json           (bar chart)
-  fig_ablation.png        ← (no real ablation experiment — kept disabled)
-
-DPI ≥ 150, font sizes ≥ 9pt, all axes labelled.
-
-All plotted values are loaded from tracked experiment outputs.
-"""
-
 from __future__ import annotations
 import json
 import os
@@ -32,7 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 
-# ── Global typography (paper-ready) ─────────────────────────────────────────
+
 matplotlib.rcParams.update({
     "font.family":         "DejaVu Sans",
     "font.size":           9,
@@ -51,7 +28,7 @@ matplotlib.rcParams.update({
     "savefig.dpi":         200,
 })
 
-# Colour palette (colorblind-safe, ColorBrewer)
+
 C_BLUE   = "#2166AC"
 C_LIGHTB = "#92C5DE"
 C_ORANGE = "#E08214"
@@ -77,16 +54,13 @@ def _save(fig, base_name: str) -> None:
     out = os.path.join(FIG_DIR, base_name)
     fig.savefig(out, dpi=200)
     plt.close(fig)
-    # mirror into paper/
+
     paper_out = os.path.join(PAPER_DIR, base_name)
     import shutil
     shutil.copy(out, paper_out)
     print(f"  saved → {base_name}  (figures/ + paper/)")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  1. ρ(B) reduction bar chart  ──── exp_agent.json
-# ═══════════════════════════════════════════════════════════════════════════
 def fig_rho_reduction():
     d = _load("exp_agent.json")
     sums = d["summaries"]
@@ -113,7 +87,7 @@ def fig_rho_reduction():
     fig, ax1 = plt.subplots(figsize=(6.0, 3.2))
     ax2 = ax1.twinx()
     rho_colors  = [C_WMSAR if m == "WM-SAR" else C_BLUE for m in order]
-    # Use consistent orange for region size to avoid colour-coding inconsistency.
+
     size_color = C_ORANGE
 
     ax1.bar(x - w/2, rho_red, width=w, color=rho_colors,
@@ -144,7 +118,7 @@ def fig_rho_reduction():
     ax1.set_title(f"ρ(B) reduction vs. region size (n={d['n']} agent calling-trees)",
                   fontsize=9.5, pad=4)
 
-    # Build a complete legend covering both axes
+
     rho_patch  = mpatches.Patch(color=C_BLUE,   label="ρ(B) reduction (other)")
     wmsar_patch= mpatches.Patch(color=C_WMSAR,  label="ρ(B) reduction (WM-SAR)")
     size_patch = mpatches.Patch(color=C_ORANGE, label="Region size / 26")
@@ -157,9 +131,6 @@ def fig_rho_reduction():
     _save(fig, "fig_rho_reduction.png")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  2. Efficiency–Quality trade-off scatter  ──── exp_agent.json
-# ═══════════════════════════════════════════════════════════════════════════
 def fig_tradeoff():
     d = _load("exp_agent.json")
     sums = d["summaries"]
@@ -174,8 +145,7 @@ def fig_tradeoff():
 
     fig, ax = plt.subplots(figsize=(7.0, 3.8))
 
-    # Hand-tuned label placements that avoid overlap (xytext = absolute)
-    # Coordinates are in (region_size, quality) data space
+
     label_pos = {
         "Greedy-Point(K=1)": (3.5,  0.05),
         "Window-2-Point":    (3.5,  0.20),
@@ -209,7 +179,7 @@ def fig_tradeoff():
                     arrowprops=dict(arrowstyle="-", color="#BBBBBB",
                                     lw=0.45, shrinkA=2, shrinkB=2))
 
-    # Pareto frontier (smaller region & higher quality)
+
     pts = sorted(zip(sizes, quality), key=lambda p: p[0])
     front = []
     best = -1
@@ -234,14 +204,11 @@ def fig_tradeoff():
     _save(fig, "fig_tradeoff.png")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  3. Budget sensitivity  ──── exp_budget.json
-# ═══════════════════════════════════════════════════════════════════════════
 def fig_budget():
     d = _load("exp_budget.json")
     Ks = d["K_values"]
     methods = ["Greedy-TopK", "Window-K", "Local-KHop", "Oracle-K", "WM-SAR"]
-    # WM-SAR is budget-free → constant horizontal line
+
     wmsar_const = d["wmsar_default"]
 
     colors  = {"Greedy-TopK": C_BLUE,   "Window-K": C_ORANGE,
@@ -274,9 +241,6 @@ def fig_budget():
     _save(fig, "fig_budget.png")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  4. Cascade-gain α sensitivity  ──── exp_cascade_gain.json
-# ═══════════════════════════════════════════════════════════════════════════
 def fig_cascade_gain():
     d = _load("exp_cascade_gain.json")
     alphas = d["alphas"]
@@ -294,7 +258,7 @@ def fig_cascade_gain():
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8.0, 3.4))
 
-    # ── Left: ρ-reduction vs α  ─────────────────────────────────
+
     for m in methods:
         ys = [d["results"][str(a)]["summaries"][m]["mean_rho_reduction"]
               for a in alphas]
@@ -312,7 +276,7 @@ def fig_cascade_gain():
     ax1.set_title("(a) ρ-reduction vs cascade gain", fontsize=10, pad=4)
     ax1.axvline(1.0, color=C_DARK, linewidth=0.5, linestyle="-", alpha=0.4)
 
-    # ── Right: NodeMSE@32 after repair vs α  ─────────────────────
+
     for m in methods:
         ys = [d["results"][str(a)]["summaries"][m]["NodeMSE_after"]["32"]
               for a in alphas]
@@ -327,7 +291,7 @@ def fig_cascade_gain():
     ax2.set_title("(b) Residual error at long horizon", fontsize=10, pad=4)
     ax2.axvline(1.0, color=C_DARK, linewidth=0.5, linestyle="-", alpha=0.4)
 
-    # Shared legend outside subplots, below
+
     handles, labels_ = ax1.get_legend_handles_labels()
     fig.legend(handles, labels_, loc="lower center", ncol=4, fontsize=7.5,
                framealpha=0.9, bbox_to_anchor=(0.5, -0.04))
@@ -338,7 +302,7 @@ def fig_cascade_gain():
 
 
 def _plot_llm_panel(ax, d_llm, with_legend=True):
-    """Single-API horizontal bar (Rec-Exact/Rec-Type/Rec-2Hop) + token text."""
+
     methods_in = ["Greedy-Point-LLM", "Window-4-LLM", "Window-8-LLM",
                   "TopK-5-LLM", "LocalRepair-2Hop-LLM", "Full-Graph-LLM",
                   "WM-SAR-LLM"]
@@ -370,13 +334,13 @@ def _plot_llm_panel(ax, d_llm, with_legend=True):
         ax.barh(y[i] + h,   rec_hop2[i], height=h, color=C_2HOP, edgecolor=ec, linewidth=lw, zorder=3)
         ax.barh(y[i],       rec_type[i], height=h, color=C_TYPE, edgecolor=ec, linewidth=lw, zorder=3)
         ax.barh(y[i] - h,   rec_exact[i], height=h, color=C_EXACT, edgecolor=ec, linewidth=lw, zorder=3)
-        # Annotate the three recall values to the right of each bar group
+
         max_val = max(rec_exact[i], rec_type[i], rec_hop2[i])
         ax.text(max_val + 0.02, y[i], f"E={rec_exact[i]:.2f}",
                 va="center", fontsize=6.5,
                 color=C_WMSAR if is_wmsar else C_DARK,
                 fontweight="bold" if is_wmsar else "normal")
-        # Token text on right column
+
         ax.text(1.32, y[i], f"{int(tokens[i])}", va="center", fontsize=7,
                 color=C_WMSAR if is_wmsar else C_GRAY,
                 fontweight="bold" if is_wmsar else "normal")
@@ -438,7 +402,7 @@ def _plot_multiapi_panel(ax_heat, ax_line, d_multi):
             fw = "bold" if methods[i] == "WM-SAR" else "normal"
             ax_heat.text(j, i, f"{v:.2f}", ha="center", va="center",
                          fontsize=7.5, color=tc, fontweight=fw)
-    # Highlight WM-SAR row
+
     if "WM-SAR" in methods:
         wi = methods.index("WM-SAR")
         for j in range(N):
@@ -447,7 +411,7 @@ def _plot_multiapi_panel(ax_heat, ax_line, d_multi):
                                   linewidth=1.5, zorder=5)
             ax_heat.add_patch(rect)
 
-    # Line plot
+
     mx = np.arange(N)
     plot_methods = [m for m in ["WM-SAR", "LocalRepair-2Hop", "TopK-5", "Greedy-Point"]
                     if m in methods]
@@ -490,12 +454,8 @@ def fig_multiapi():
 
 
 def fig_llm_multiapi_merged():
-    """Generate the compact two-panel multi-model comparison.
 
-    (a) Single-API recall barchart   (LEFT)
-    (b) Multi-API Rec-Exact heatmap  (RIGHT-TOP)
-    (c) Cross-model line             (RIGHT-BOTTOM)
-    """
+
     d_llm   = _load("exp_agent_llm.json")
     d_multi = _load("exp_multiapi.json")
     fig = plt.figure(figsize=(13.5, 4.2))
@@ -513,9 +473,6 @@ def fig_llm_multiapi_merged():
     _save(fig, "fig_llm_multiapi.png")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Main
-# ═══════════════════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     print("Regenerating WM-SAR figures from real experiment results …")
     fig_rho_reduction()

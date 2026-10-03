@@ -1,21 +1,3 @@
-"""Convert a failed world-model rollout into a NetworkX failure graph G_f.
-
-The failure graph is a directed graph whose sink is the final-failure target
-node ``t_star``. Node and edge types follow the spec (Section 4). Every node
-carries the feature attributes used downstream by the amplification field, the
-region extractor, and the repair operators.
-
-Unified per-node attributes added for the algorithmics:
-    err  : float  -- magnitude of (prediction/observation/structure) error
-    unc  : float  -- uncertainty
-    cost : float  -- repair/token cost weight of touching this node
-
-Graph-level attributes:
-    G.graph["t_star"]      -- id of the final_failure target node
-    G.graph["domain"]      -- "agent_wm" | "parametric_gwm"
-    G.graph["gt_region"]   -- ground-truth set of corrupted node ids
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -59,13 +41,8 @@ def _add_node(G: nx.DiGraph, nid: str, node_type: str, **attrs: Any) -> str:
     return nid
 
 
-# ---------------------------------------------------------------------------
-# Agent world-model rollout -> failure graph
-# ---------------------------------------------------------------------------
-
-
 def agent_rollout_to_graph(roll: Any) -> nx.DiGraph:
-    """Build a failure graph from an :class:`AgentRollout`-shaped object/dict."""
+
     if isinstance(roll, dict):
         steps = roll["steps"]
         rid = roll["rollout_id"]
@@ -125,23 +102,23 @@ def agent_rollout_to_graph(roll: Any) -> nx.DiGraph:
             gt=in_gt and rc_type == "tool_response" and at_root, **common,
         )
 
-        # observed_as: prediction explained by observation
+
         G.add_edge(pred, obs, edge_type="observed_as")
-        # action_causes: action drives next predicted state
+
         G.add_edge(act, pred, edge_type="action_causes")
-        # calls / returns
+
         G.add_edge(act, tcall, edge_type="calls")
         G.add_edge(tcall, tresp, edge_type="returns")
         G.add_edge(tresp, pred, edge_type="updates_state")
 
-        # transition backbone
+
         if prev_pred is not None:
             G.add_edge(prev_pred, pred, edge_type="transition_to")
             if downstream:
                 G.add_edge(prev_pred, pred, edge_type="propagates_error_to")
         prev_pred = pred
 
-        # type-specific structure (only the root-step instance is a carrier)
+
         root_carrier = None
         if not s["subgoal_done"] or rc_type == "subgoal":
             carrier = rc_type == "subgoal" and at_root
@@ -182,18 +159,16 @@ def agent_rollout_to_graph(roll: Any) -> nx.DiGraph:
         if rc_type == "tool_response" and at_root:
             root_carrier = tresp
 
-        # the amplification region = predicted_state chain (downstream) + the
-        # root-cause carrier node at root_t
+
         if downstream:
             gt_region.add(pred)
         if root_carrier is not None:
             gt_region.add(root_carrier)
 
-    # final failure target node
+
     T = steps[-1]["t"]
-    # The target node's error is *derived* from inflow during propagation (it has
-    # no intrinsic error of its own), so repairing the upstream amplification
-    # region can drive it down.
+
+
     tstar = _add_node(
         G, "final_failure", "final_failure",
         time_step=T + 1, status="failed",
@@ -208,21 +183,16 @@ def agent_rollout_to_graph(roll: Any) -> nx.DiGraph:
     return G
 
 
-# ---------------------------------------------------------------------------
-# Parametric GWM rollout -> failure graph
-# ---------------------------------------------------------------------------
-
-
 def gwm_rollout_to_graph(roll: Any) -> nx.DiGraph:
-    """Build a failure graph from a :class:`GWMRollout`-shaped object/dict."""
+
     if isinstance(roll, dict):
         d = roll
     else:
         d = roll.to_dict()
 
-    pred_node = np.array(d["pred_node"])     # (T+1, n)
+    pred_node = np.array(d["pred_node"])
     true_node = np.array(d["true_node"])
-    pred_adj = np.array(d["pred_adj"])       # (T+1, n, n)
+    pred_adj = np.array(d["pred_adj"])
     true_adj = np.array(d["true_adj"])
     T = d["horizon"]
     n = d["n_nodes"]
@@ -235,8 +205,8 @@ def gwm_rollout_to_graph(roll: Any) -> nx.DiGraph:
     G.graph["rollout_id"] = d["rollout_id"]
     G.graph["failure_type"] = d["failure_type"]
 
-    node_err = np.abs(pred_node - true_node)            # (T+1, n)
-    edge_err = np.abs(pred_adj - true_adj).sum(axis=2)  # (T+1, n) outgoing edge err
+    node_err = np.abs(pred_node - true_node)
+    edge_err = np.abs(pred_adj - true_adj).sum(axis=2)
 
     gt_region: set[str] = set()
     for t in range(T + 1):
@@ -256,18 +226,17 @@ def gwm_rollout_to_graph(roll: Any) -> nx.DiGraph:
             if is_gt:
                 gt_region.add(nid)
 
-    # temporal + structural edges propagating error toward later states
+
     for t in range(T):
         for i in range(n):
             G.add_edge(f"n{i}_t{t}", f"n{i}_t{t+1}", edge_type="transition_to")
-            # structural propagation via predicted adjacency
+
             for j in range(n):
                 if pred_adj[t + 1, i, j] > 0.5:
                     G.add_edge(f"n{i}_t{t}", f"n{j}_t{t+1}",
                                edge_type="propagates_error_to")
 
-    # final failure: aggregate the worst final-step nodes
-    # target error is derived from inflow during propagation (no intrinsic error)
+
     tstar = _add_node(
         G, "final_failure", "final_failure", time_step=T + 1, status="failed",
         prediction_error=0.0, err=0.0,
@@ -284,7 +253,7 @@ def gwm_rollout_to_graph(roll: Any) -> nx.DiGraph:
 
 
 def world_model_failure_to_graph(failed_case: Any) -> nx.DiGraph:
-    """Dispatch to the right builder based on the rollout domain."""
+
     domain = failed_case["domain"] if isinstance(failed_case, dict) else failed_case.domain
     if domain == "agent_wm":
         return agent_rollout_to_graph(failed_case)
@@ -293,33 +262,17 @@ def world_model_failure_to_graph(failed_case: Any) -> nx.DiGraph:
     raise ValueError(f"unknown domain: {domain}")
 
 
-# ---------------------------------------------------------------------------
-# Convenience accessors
-# ---------------------------------------------------------------------------
-
-
 def build_from_agent_calling_tree(
     G_tree: nx.DiGraph,
-    states: dict,           # {node_id: np.ndarray of shape (8,)}
-    true_error: dict,       # {node_id: float}
+    states: dict,
+    true_error: dict,
     t_star: str,
 ) -> nx.DiGraph:
-    """Convert an agent calling-tree instance into a failure graph G_f.
 
-    Each node in G_tree becomes a node in G_f with:
-        err  = true_error[node]
-        unc  = derived from state[3] (error_prob feature)
-        cost = 1.0 (uniform; could weight by node_type)
-        node_type = from G_tree.nodes[node]["node_type"]
-        time_step = topological index
 
-    Edges are preserved with their original edge_type.
-    G_f.graph["t_star"] is set to t_star.
-    G_f.graph["gt_region"] is the set of nodes with err > mean_err.
-    """
     G_f = nx.DiGraph()
 
-    # Topological order → time_step
+
     try:
         topo = list(nx.topological_sort(G_tree))
     except Exception:
@@ -334,7 +287,7 @@ def build_from_agent_calling_tree(
         err = float(true_error.get(n, 0.0))
         state = states.get(n)
         if isinstance(state, (np.ndarray, list)):
-            unc = float(state[3]) if len(state) > 3 else 0.1  # error_prob as uncertainty
+            unc = float(state[3]) if len(state) > 3 else 0.1
         else:
             unc = 0.1
         G_f.add_node(

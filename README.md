@@ -80,22 +80,17 @@ Tested with Python 3.13.7.
 ```python
 from wm_sar import data_generator as dg, failure_graph as fg, baselines as bl, repair_executor as re_
 
-# 1. Generate a synthetic agent rollout with a planted root-cause failure
 rollout = dg.generate_agent_wm_rollouts(n=1, seed=42)[0]
 
-# 2. Build the failure graph
 G = fg.agent_rollout_to_graph(rollout)
 print(f"Failure graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
-# 3. Run WM-SAR region extraction
-plan = bl.wm_sar(G)          # returns a RepairPlan
+plan = bl.wm_sar(G)
 print(f"Region: {len(plan.nodes)} nodes, token cost: {plan.token_cost}")
 
-# 4. Measure recovery
 rec = re_.measure_recovery(G, plan.nodes)
 print(f"Recovered: {rec['recovered']}, IoU: {rec['region_iou']:.3f}")
 
-# 5. Compare reference baselines and WM-SAR
 all_plans = bl.all_baselines(G, budget=6)
 all_plans["WM-SAR"] = bl.wm_sar(G, budget=6)
 for name, p in sorted(all_plans.items()):
@@ -108,11 +103,11 @@ for name, p in sorted(all_plans.items()):
 ### Non-LLM experiments (no API key needed)
 
 ```bash
-python experiments/exp_agent.py           # Main simulation (n=50, seed=42)
-python experiments/exp_benchmarks.py      # Benchmark topology generalisation
-python experiments/exp_budget.py          # Budget efficiency
-python experiments/exp_cascade_gain.py    # Cascade gain robustness
-python experiments/run_all.py             # Run all non-LLM experiments
+python experiments/exp_agent.py
+python experiments/exp_benchmarks.py
+python experiments/exp_budget.py
+python experiments/exp_cascade_gain.py
+python experiments/run_all.py
 ```
 
 Legacy spec-aligned experiments (n=200):
@@ -132,8 +127,8 @@ export LLM_API_KEY="your-api-key"
 export LLM_BASE_URL="https://your-compatible-endpoint/v1"
 export LLM_MODEL="your-model-name"
 
-python experiments/exp_agent_llm.py      # LLM repair experiment (n=20)
-python experiments/exp_multiapi.py       # Multi-model comparison
+python experiments/exp_agent_llm.py
+python experiments/exp_multiapi.py
 ```
 
 All results are saved as JSON to `experiments/results/`.
@@ -143,23 +138,23 @@ All results are saved as JSON to `experiments/results/`.
 ```text
 .
 |-- figures/
-|   |-- pipeline.png        # README method pipeline figure
-|   `-- intuition.png       # README intuition figure
-|-- experiments/            # Non-LLM, LLM, budget, benchmark, and ablation experiments
+|   |-- pipeline.png
+|   `-- intuition.png
+|-- experiments/
 |-- wm_sar/
-|   |-- __init__.py         # Package exports
-|   |-- amplification.py    # GEAF spectral computations
-|   |-- baselines.py        # Baseline methods + wm_sar() entry point
-|   |-- benchmark_graphs.py # Benchmark topology generators
-|   |-- data_generator.py   # Synthetic rollout generator
-|   |-- failure_graph.py    # Rollout-to-failure-graph builder
-|   |-- llm_baselines.py    # LLM-based repair baselines
-|   |-- llm_client.py       # General model client; reads env vars
-|   |-- metrics.py          # Recovery, CostNorm, IoU, rho_reduction metrics
-|   |-- region_extractor.py # WMSAR class and WMSARConfig
-|   |-- repair_executor.py  # Repair simulation and measurement
-|   |-- act_text.py         # Text representation for LLM contexts
-|   `-- text_scenarios.py   # Textual failure scenario generators
+|   |-- __init__.py
+|   |-- amplification.py
+|   |-- baselines.py
+|   |-- benchmark_graphs.py
+|   |-- data_generator.py
+|   |-- failure_graph.py
+|   |-- llm_baselines.py
+|   |-- llm_client.py
+|   |-- metrics.py
+|   |-- region_extractor.py
+|   |-- repair_executor.py
+|   |-- act_text.py
+|   `-- text_scenarios.py
 |-- requirements.txt
 `-- README.md
 ```
@@ -172,20 +167,20 @@ All results are saved as JSON to `experiments/results/`.
 from wm_sar.region_extractor import WMSARConfig
 
 cfg = WMSARConfig(
-    H=4,                 # Spectral random-walk depth
-    weight_norm=1.0,     # Estimated model-weight amplification
-    max_region_size=20,  # Max nodes in repair region
-    n_seeds=6,           # Initial seed nodes
-    lambda1=1.2,         # Error-coverage gain weight
-    lambda2=1.5,         # Spectral-relief gain weight
-    lambda3=0.1,         # Cost regularizer
-    merge_tau=0.5,       # Jaccard threshold for merging regions
-    gamma=0.95,          # Planning discount factor
-    use_geaf=True,       # Enable GEAF seed scoring
-    use_coupling=True,   # Enable boundary coupling term ρ(B_R)
-    use_growing=True,    # Enable connected region growing
-    use_pruning=True,    # Enable region pruning
-    use_rho_relief=True, # Include spectral relief in the grow objective
+    H=4,
+    weight_norm=1.0,
+    max_region_size=20,
+    n_seeds=6,
+    lambda1=1.2,
+    lambda2=1.5,
+    lambda3=0.1,
+    merge_tau=0.5,
+    gamma=0.95,
+    use_geaf=True,
+    use_coupling=True,
+    use_growing=True,
+    use_pruning=True,
+    use_rho_relief=True,
 )
 ```
 
@@ -214,17 +209,12 @@ Input graph `G` is an `nx.DiGraph` where each node has attributes:
 from wm_sar.baselines import all_baselines
 
 plans = all_baselines(G, budget=6)
-# plans: dict[str, RepairPlan]
-# RepairPlan.nodes: set of node IDs in the repair region
-# RepairPlan.token_cost: estimated token cost
 ```
 
 ### Building a failure graph from your own rollout
 
 ```python
 from wm_sar.failure_graph import agent_rollout_to_graph
-# rollout: dict with keys 'steps', 'root_cause_t', 'gt_region_steps', etc.
-# (see data_generator.py for the full schema)
 G = agent_rollout_to_graph(rollout)
 ```
 

@@ -1,12 +1,3 @@
-"""Experiment 2: Parametric GWM Failed-Case Repair (Table 2).
-
-Repairs failed parametric graph-world-model rollouts (GCN/MPNN/GPS/ActionNode/
-Error-Aware GWM). Reports NodeMSE-style residual error, edge-structure recovery,
-return error, and the spectral reductions dGEAF / d rho(B). Expectation: WM-SAR
-reduces graph rollout error and recovers failed parametric plans, approaching the
-OracleRegion upper bound.
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -21,7 +12,7 @@ COLUMNS = ["Method", "NodeMSE", "EdgeF1", "ReturnErr", "dGEAF", "dRhoB", "Recove
 
 
 def _node_mse_and_return(g, repaired):
-    """Residual node error (proxy NodeMSE) and return/target error after repair."""
+
     eff = propagate_effective_error(g, set(repaired))
     vals = [e for v, e in eff.items() if v != g.graph["t_star"]]
     node_mse = float(np.mean(np.square(vals))) if vals else 0.0
@@ -48,7 +39,7 @@ def run(verbose: bool = True) -> list[dict]:
             nm, re = _node_mse_and_return(g, plan.nodes)
             node_mses.append(nm)
             ret_errs.append(re)
-            # edge structure recovery proxy: fraction of corrupted region covered
+
             gt = set(g.graph.get("gt_region", set()))
             cov = len(plan.nodes & gt) / len(gt) if gt else 0.0
             prec = len(plan.nodes & gt) / len(plan.nodes) if plan.nodes else 0.0

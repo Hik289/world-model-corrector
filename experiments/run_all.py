@@ -1,12 +1,3 @@
-"""Run the full WM-SAR experiment suite.
-
-Generates (and persists) the synthetic failed-rollout corpus, runs Experiments
-1-6, prints all result tables, and writes figures + CSVs. Deterministic under
-seed=42.
-
-    python experiments/run_all.py
-"""
-
 from __future__ import annotations
 
 import json
@@ -39,7 +30,7 @@ def _persist_dataset() -> None:
 
 
 def _make_region_figure() -> None:
-    """Figure 3: amplification field + selected WM-SAR region on one example."""
+
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -49,7 +40,7 @@ def _make_region_figure() -> None:
     from wm_sar import baselines as bl
 
     _, agent_graphs, _ = C.build_dataset()
-    # pick a graph with a reasonably long amplification chain
+
     G = max(agent_graphs, key=lambda g: len(g.graph.get("gt_region", [])))
     tfield = amp.phi_H_target(G)
     region = bl.wm_sar(G).nodes
@@ -60,7 +51,7 @@ def _make_region_figure() -> None:
     nodes = nx.draw_networkx_nodes(
         G, pos, node_color=vals, cmap="viridis", node_size=180, ax=ax)
     nx.draw_networkx_edges(G, pos, alpha=0.2, ax=ax, arrowsize=6)
-    # outline the WM-SAR region
+
     nx.draw_networkx_nodes(
         G, pos, nodelist=[n for n in region if G.has_node(n)],
         node_color="none", edgecolors="red", linewidths=2.5, node_size=260, ax=ax)

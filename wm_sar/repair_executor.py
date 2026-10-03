@@ -1,37 +1,21 @@
-"""Simulate applying a repair and measuring recovery.
-
-Recovery model (the crux of the subgraph-vs-pointwise story)
-------------------------------------------------------------
-Repairing a node reduces its *local* error. But error flows downstream along
-``propagates_error_to`` / ``transition_to`` / structural edges: a node's
-effective post-repair error is the max of its own residual error and the
-(decayed) error arriving from its predecessors. So fixing a downstream symptom
-while leaving the upstream root cause un-repaired lets the root cause
-**re-corrupt** the node. Recovery therefore requires repairing the *connected
-amplification region* from the root cause to the failure boundary — exactly what
-WM-SAR targets and what context-limited pointwise scanners tend to miss.
-
-Computed by forward propagation over the (acyclic) failure graph.
-"""
-
 from __future__ import annotations
 
 import networkx as nx
 
 from .failure_graph import node_error
 
-REPAIR_STRENGTH = 0.9      # fraction of local error removed by a repair
-PROP_GAIN = 0.85           # downstream propagation gain of residual error
-ERR_EPS = 0.15             # error level considered "active" for depth / inconsistency
-RECOVERY_FRAC = 0.4        # recovered if final error <= RECOVERY_FRAC * before
-RECOVERY_ABS = 0.5         # ...and below this absolute level
+REPAIR_STRENGTH = 0.9
+PROP_GAIN = 0.85
+ERR_EPS = 0.15
+RECOVERY_FRAC = 0.4
+RECOVERY_ABS = 0.5
 
 
 def _topo(G: nx.DiGraph) -> list[str]:
     try:
         return list(nx.topological_sort(G))
     except nx.NetworkXUnfeasible:
-        # break cycles deterministically if any sneak in
+
         H = G.copy()
         while not nx.is_directed_acyclic_graph(H):
             cyc = nx.find_cycle(H)
@@ -42,7 +26,7 @@ def _topo(G: nx.DiGraph) -> list[str]:
 def propagate_effective_error(
     G: nx.DiGraph, repaired: set[str], strength: float = REPAIR_STRENGTH
 ) -> dict[str, float]:
-    """Forward-propagate residual error after repairing ``repaired``."""
+
     if not 0 <= strength <= 1:
         raise ValueError("strength must be in [0, 1]")
     order = _topo(G)
@@ -58,7 +42,7 @@ def propagate_effective_error(
 
 
 def propagation_depth(G: nx.DiGraph, eff: dict[str, float]) -> int:
-    """Longest path (in #active nodes) of error reaching the target node."""
+
     active = {v for v, e in eff.items() if e > ERR_EPS}
     if not active:
         return 0
@@ -72,9 +56,8 @@ def propagation_depth(G: nx.DiGraph, eff: dict[str, float]) -> int:
 
 
 def local_inconsistency(G: nx.DiGraph, repaired: set[str], eff: dict[str, float]) -> int:
-    """#edges joining a repaired node to a still-erroneous unrepaired neighbor.
-    A connected subgraph repair leaves few such edges; scattered pointwise edits
-    leave many."""
+
+
     count = 0
     for u, v in G.edges():
         ru, rv = u in repaired, v in repaired
@@ -95,7 +78,7 @@ def region_iou(G: nx.DiGraph, repaired: set[str]) -> float:
 
 
 def measure_recovery(G: nx.DiGraph, repaired: set[str]) -> dict:
-    """Apply ``repaired`` and return the full recovery measurement bundle."""
+
     t_star = G.graph["t_star"]
     eff_before = propagate_effective_error(G, set())
     eff_after = propagate_effective_error(G, set(repaired))
@@ -126,8 +109,8 @@ def measure_recovery(G: nx.DiGraph, repaired: set[str]) -> dict:
 
 def apply_repair(G: nx.DiGraph, repaired: set[str],
                  strength: float = REPAIR_STRENGTH) -> nx.DiGraph:
-    """Return a copy of G with the repaired effective errors written back into
-    the ``err`` attribute (used for before/after spectral measurements)."""
+
+
     eff = propagate_effective_error(G, set(repaired), strength)
     H = G.copy()
     for v in H.nodes():

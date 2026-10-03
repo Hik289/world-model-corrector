@@ -1,23 +1,7 @@
-"""
-text_scenarios.py — Converts numeric synthetic rollouts into textual
-descriptions that LLMs can reason about.
-
-Each rollout is mapped to a realistic task scenario (booking, code review,
-data pipeline, etc.). Each step gets:
-  - predicted_text: what the world model imagined
-  - actual_text:   what actually happened
-  - error_type:    high-level category
-
-This bridges the gap between numeric simulation and LLM-based repair.
-"""
-
 from __future__ import annotations
 import numpy as np
 from typing import Any
 
-# ── Scenario templates ──────────────────────────────────────────────────────
-# Each scenario provides step templates: (predicted_ok, actual_ok, error_variant)
-# {field} placeholders are filled with step-specific values.
 
 SCENARIOS = {
     "flight_booking": {
@@ -156,22 +140,17 @@ def rollout_to_steps(
     rollout: Any,
     rng: np.random.Generator | None = None,
 ) -> list[dict]:
-    """
-    Convert a numeric AgentRollout to a list of text-annotated step dicts.
 
-    Each dict has:
-      step (int), predicted (str), actual (str), error (float),
-      uncertainty (float), error_type (str), is_root_cause (bool)
-    """
+
     if rng is None:
         rng = np.random.default_rng(0)
 
-    # pick a scenario
+
     scenario_keys = list(SCENARIOS.keys())
     scenario_name = scenario_keys[int(rng.integers(0, len(scenario_keys)))]
     scenario = SCENARIOS[scenario_name]
 
-    # fill in placeholders
+
     num = int(rng.integers(1000, 9999))
     city_a = CITIES[int(rng.integers(0, 4))]
     city_b = CITIES[int(rng.integers(4, 8))]
@@ -205,10 +184,10 @@ def rollout_to_steps(
 
         if is_root:
             predicted = fill(pred_ok)
-            actual = fill(error_variant)          # ← error injected here
+            actual = fill(error_variant)
             error_type = "root_cause"
         elif is_downstream and numeric_err > 0.15:
-            # downstream corruption: predicted was ok but propagated error
+
             predicted = fill(pred_ok)
             actual = fill(actual_ok) + f" [propagated mismatch: downstream of step {root_t}]"
             error_type = "downstream_corruption"

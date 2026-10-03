@@ -1,17 +1,3 @@
-"""Evaluation metrics and the per-method aggregating evaluator.
-
-Metrics (Section 13):
-    Recovery Success Rate
-    Cost-Normalized Recovery   (recovery rate per 1k tokens)
-    Tokens per Recovery
-    Downstream Error Reduction
-    Propagation Depth Reduction
-    Region Localization (IoU vs. ground-truth corrupted region)
-    Local inconsistency after repair
-    Latency
-    Spectral deltas: dGEAF, d rho(B), d ErrorSlope, d TargetAmplify
-"""
-
 from __future__ import annotations
 
 from typing import Callable
@@ -25,7 +11,7 @@ from .repair_executor import apply_repair, measure_recovery
 
 
 def spectral_deltas(G: nx.DiGraph, repaired: set[str], H: int = 4) -> dict:
-    """Before/after spectral dynamics reduction for one graph + repair."""
+
     before = amp.spectral_summary(G, H)
     Grep = apply_repair(G, set(repaired))
     after = amp.spectral_summary(Grep, H)
@@ -48,7 +34,7 @@ def evaluate_method(
     with_spectral: bool = True,
     H: int = 4,
 ) -> dict:
-    """Run ``plan_fn`` on every graph and aggregate all metrics."""
+
     rec, costs, tpr_tokens, lat, edits = [], [], [], [], []
     down_red, pd_red, incon, iou = [], [], [], []
     is_sub = []
@@ -85,7 +71,7 @@ def evaluate_method(
         "n_recovered": int(n_rec),
         "n": n,
         "mean_token_cost": mean_cost,
-        # cost-normalized recovery: recoveries per 1k tokens
+
         "cost_norm_recovery": float(recovery / (mean_cost / 1000.0)) if mean_cost else 0.0,
         "tokens_per_recovery": float(np.sum(costs) / n_rec) if n_rec else float("inf"),
         "mean_latency": float(np.mean(lat)) if lat else 0.0,

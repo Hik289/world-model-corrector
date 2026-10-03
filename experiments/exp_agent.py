@@ -1,35 +1,3 @@
-"""Experiment: WM-SAR vs Engineering Baselines on Agent Calling-Tree Dataset.
-
-Dataset: heterogeneous agent calling-tree testbed (matching analysis/main.tex §4.3)
-    - 22-30 nodes, 9 types, 6 edge types, 8-dim state vectors
-    - Failure: root-cause injection → cascade propagation (gain=1.1)
-
-Baselines (engineering methods — all could use LLM for repair, differ in selection):
-    Greedy-Point(K=1)  : Repair single highest-error node
-    TopK-Point(K=3/5)  : Repair top-K nodes by error (disconnected)
-    Window-2/4/8-Point : Sliding window of k steps
-    LocalRepair-2/3Hop : k-hop neighbourhood of highest-error node
-    CascadeRepair      : Topological scan until error drops
-    Oracle             : Ground-truth corrupted region
-    WM-SAR             : GEAF + ρ(B)-minimisation guided subgraph
-
-Metrics:
-    NodeMSE@H          : Post-repair error at horizon H (T1 simulation)
-    GrowthSlope        : d(log e_k)/dk (T1 corollary: → log L_X)
-    ρ(B) reduction     : How much coupling amplification is reduced (T2)
-    ReturnError@H      : Planning regret bound from T4
-    IoU vs GT          : Region localisation quality
-    Connected          : Whether repair region is connected
-
-Key claims:
-    C1: Engineering pointwise methods leave ρ(B) nearly unchanged
-        → multi-step error continues to grow (GrowthSlope ≈ before)
-    C2: WM-SAR significantly reduces ρ(B) → flattens GrowthSlope
-    C3: Window-k with k ≤ 2 produces disconnected regions far from root cause
-    C4: ρ(B_G) > max(L_X, M_A) in most instances (T2 cross-coupling active)
-    C5: WM-SAR NodeMSE@32 ≤ Oracle NodeMSE@32 × 1.05 (near-oracle performance)
-"""
-
 import argparse
 import json
 import os
@@ -37,7 +5,7 @@ import sys
 
 import numpy as np
 
-# Add parent to path
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wm_sar.agent_calling_tree import generate_calling_trees
@@ -59,7 +27,7 @@ def main():
     print(f"  Agent Calling-Tree Experiment: n={args.n}, seed={args.seed}")
     print(f"{'='*60}\n")
 
-    # --- Generate instances ---
+
     trees = generate_calling_trees(n=args.n, seed=args.seed)
     G_list = [t.G for t in trees]
 
@@ -68,13 +36,13 @@ def main():
     print(f"  Node count: {np.mean(sizes):.1f} ± {np.std(sizes):.1f} "
           f"(range {min(sizes)}-{max(sizes)})")
 
-    # --- Pre-experiment statistics ---
+
     rhos = [amp.rho_B(G, set(G.nodes()), weight_norm=1.0) for G in G_list]
     slopes = [amp.error_growth_slope(
                   amp.simulate_error_propagation(G, set(), H=args.H_max),
                   h_start=4, h_end=args.H_max)
               for G in G_list]
-    # T2 claim: ρ(B) > max(L_X, M_A)?
+
     n_superadditive = 0
     for G in G_list:
         L_X, L_A, M_X, M_A = amp._estimate_propagation_gains(G)
@@ -88,13 +56,13 @@ def main():
     print(f"    mean GrowthSlope  = {np.mean(slopes):.4f} ± {np.std(slopes):.4f}")
     print(f"    T2 super-add (ρ(B)>max(L_X,M_A)): {n_superadditive}/{len(G_list)} = {frac_super:.1%}")
 
-    # --- Run all baselines ---
+
     print("\n  Running baselines...\n")
     print(f"  {'Method':<28}  {'ρ_red':>6}  {'MSE@32':>8}  {'slope':>7}  {'conn':>5}  {'IoU':>6}")
     print(f"  {'-'*68}")
     summaries = run_all_baselines(G_list, verbose=True)
 
-    # --- Print comparison table ---
+
     print(f"\n{'='*60}")
     print("  Multi-step error table (NodeMSE@H)")
     print(f"{'='*60}")
@@ -104,7 +72,7 @@ def main():
     print(header)
     print("  " + "-" * (len(header) - 2))
 
-    # Sort by MSE@32 after repair (ascending = better)
+
     methods_sorted = sorted(summaries.keys(),
                              key=lambda m: summaries[m].get("NodeMSE_after", {}).get(32, 99))
     for name in methods_sorted:
@@ -115,7 +83,7 @@ def main():
         row += f"  {s.get('mean_rho_reduction', 0.0):.4f}"
         print(row)
 
-    # --- T4 planning regret comparison ---
+
     print("\n  T4 Planning Regret Reduction:")
     for name in methods_sorted:
         s = summaries[name]
@@ -125,7 +93,7 @@ def main():
         print(f"    {name:<28}  regret_reduction={rr:.4f}  "
               f"bound_before={rb_b:.4f}  bound_after={rb_a:.4f}")
 
-    # --- Save results ---
+
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
     output = {

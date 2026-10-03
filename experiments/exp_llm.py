@@ -1,17 +1,3 @@
-"""
-exp_llm.py — Main LLM experiment with real model API calls.
-
-Compares:
-  TraceScan-w1/w2/w4-LLM  : configured model with limited context window
-  TraceScan-Full-LLM       : configured model with full trace context
-  LLMRepair-Full-Plan-LLM  : configured model full replan
-  LastError-Heuristic      : No LLM, highest numeric error
-  WM-SAR-LLM               : Graph analysis (GEAF) → ONE model call
-
-Usage:
-  python experiments/exp_llm.py [--n 30] [--seed 42] [--outfile results/exp_llm.json]
-"""
-
 import argparse
 import json
 import os
@@ -34,18 +20,18 @@ def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
     print("  Using configured model for all baselines + WM-SAR repair")
     print()
 
-    # --- LLM clients ---
+
     client = LLMClient(
         model=model,
         temperature=0.0,
         max_tokens=512,
     )
 
-    # --- Generate rollouts ---
+
     rollouts = dg.generate_agent_wm_rollouts(n=n, seed=seed)
     print(f"  Generated {len(rollouts)} rollouts")
 
-    # --- Accumulate results ---
+
     method_names = [
         "TraceScan-w1-LLM",
         "TraceScan-w2-LLM",
@@ -61,10 +47,10 @@ def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
     }
 
     for idx, rollout in enumerate(rollouts):
-        # Build failure graph
+
         G = fg.agent_rollout_to_graph(rollout)
 
-        # Generate text for this rollout
+
         rollout_steps, task_desc, failure_desc = rollout_to_steps(
             rollout, rng=np.random.default_rng(seed + idx)
         )
@@ -73,7 +59,7 @@ def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
             print(f"  [{idx+1}/{n}] T={len(rollout.steps)} root_t={rollout.root_cause_t} "
                   f"scenario='{failure_desc[:50]}...'")
 
-        # Run all LLM baselines
+
         results = run_all_llm_baselines(
             G=G,
             rollout_steps=rollout_steps,
@@ -92,7 +78,7 @@ def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
             agg[method]["iou"].append(res.region_iou)
             agg[method]["n_calls"].append(res.n_llm_calls)
 
-    # --- Compute summary ---
+
     summary = {}
     for method in method_names:
         d = agg[method]
@@ -116,7 +102,7 @@ def run_experiment(n: int = 30, seed: int = 42, verbose: bool = True) -> dict:
             "n": nn,
         }
 
-    # --- Print table ---
+
     print()
     print(f"{'Method':<28} {'Rec':>6} {'Tokens':>8} {'Tok/Rec':>9} "
           f"{'Lat(ms)':>8} {'IoU':>6} {'#Calls':>7}")
