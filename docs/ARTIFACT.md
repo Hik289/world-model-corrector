@@ -40,7 +40,6 @@ Main tracked entry points for paper-scale or benchmark-scale runs:
 - `python experiments/exp_cascade_gain.py`
 - `python experiments/exp_llm.py`
 - `python experiments/exp_multiapi.py`
-- `python experiments/exp_real_attribution.py`
 
 ## Figure Assets
 

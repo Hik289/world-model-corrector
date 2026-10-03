@@ -22,7 +22,7 @@ Official implementation of <strong>WM-SAR</strong> (World-Model Subgraph Amplifi
 | --- | --- |
 | Research question | Can agent rollout failures be repaired by correcting the causal amplifier rather than the final symptom? |
 | Core method | WM-SAR identifies stable repair regions in failure graphs and compares subgraph repair against pointwise correction. |
-| Included artifacts | Synthetic and LLM experiments, budget studies, benchmark topology tests, API references, and real-attribution support. |
+| Included artifacts | Synthetic and LLM experiments, budget studies, benchmark topology tests, and API references. |
 | Fast validation | `python experiments/run_all.py` |
 | Paper-scale reproduction | Synthetic, parametric, subgraph-vs-pointwise, spectral, context-limited, and optional LLM repair experiments. |
 
@@ -134,15 +134,6 @@ export LLM_MODEL="your-model-name"
 
 python experiments/exp_agent_llm.py      # LLM repair experiment (n=20)
 python experiments/exp_multiapi.py       # Multi-model comparison
-```
-
-### Real attribution experiment (requires Who&When dataset)
-
-```bash
-# Download the Who&When dataset (Kevin355/Who_and_When on HuggingFace)
-python experiments/exp_real_attribution.py \
-    --data-dir /path/to/who_and_when_dataset/Algorithm-Generated \
-    --n 20
 ```
 
 All results are saved as JSON to `experiments/results/`.
