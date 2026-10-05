@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import json
+import math
+import re
+
 import numpy as np
 import networkx as nx
+
+CONTEXT_PROTOCOL_VERSION = "recore-context-v2"
 
 
 FEAT_NAMES = [
@@ -72,10 +78,15 @@ def _state_to_sentence(node_id: str, node_type: str, state: list | np.ndarray,
 def tree_to_text(
     G: nx.DiGraph,
     selected_nodes: set | None = None,
-    max_nodes: int = 30,
+    max_nodes: int | None = None,
     include_edges: bool = True,
 ) -> tuple[str, list[str]]:
 
+
+    if max_nodes is not None and max_nodes < 0:
+        raise ValueError("max_nodes must be non-negative or None")
+    if selected_nodes is not None and not set(selected_nodes).issubset(G.nodes()):
+        raise ValueError("selected_nodes contains nodes outside the graph")
 
     try:
         topo = list(nx.topological_sort(G))
@@ -87,7 +98,10 @@ def tree_to_text(
     else:
         nodes_to_show = topo
 
-    nodes_to_show = nodes_to_show[:max_nodes]
+    if max_nodes is not None:
+        nodes_to_show = nodes_to_show[:max_nodes]
+    visible_nodes = set(nodes_to_show)
+    topo_index = {v: i for i, v in enumerate(topo)}
     t_star = G.graph.get("t_star", "")
 
     lines = ["=== Agent Calling-Tree Failure Report ===",
@@ -103,15 +117,36 @@ def tree_to_text(
         err   = float(d.get("err", 0.0))
         state = d.get("state", [])
         desc  = _state_to_sentence(v, ntype, state, err)
-        lines.append(f"  Step {topo.index(v):2d}: {desc}")
+        state_values = np.asarray(state).tolist() if state is not None else []
+        confidence = d.get("confidence", d.get("prediction_confidence"))
+        if confidence is None and isinstance(state_values, list) and len(state_values) > 5:
+            confidence = state_values[5]
+        confidence_text = "unavailable" if confidence is None else f"{float(confidence):.6g}"
+        lines.append(f"  Step {topo_index[v]:2d}: {desc}")
+        lines.append(
+            f"    state={json.dumps(state_values)}; observed_error={err:.6g}; "
+            f"confidence={confidence_text}"
+        )
 
-    if include_edges and selected_nodes is not None:
+    if include_edges:
         lines.append("")
         lines.append("--- Edges in repair region ---")
         for u, v, data in G.edges(data=True):
-            if u in selected_nodes and v in selected_nodes:
+            if u in visible_nodes and v in visible_nodes:
                 etype = data.get("edge_type", "calls")
                 lines.append(f"  {u} --[{etype}]--> {v}")
+        boundary_edges = [
+            (u, v, data) for u, v, data in G.edges(data=True)
+            if (u in visible_nodes) != (v in visible_nodes)
+        ]
+        if boundary_edges:
+            lines.append("")
+            lines.append("--- Boundary dependencies (external context only) ---")
+            for u, v, data in boundary_edges:
+                etype = data.get("edge_type", "calls")
+                source = str(u) if u in visible_nodes else f"{u} [external]"
+                target = str(v) if v in visible_nodes else f"{v} [external]"
+                lines.append(f"  {source} --[{etype}]--> {target}")
 
     lines.append("")
     lines.append(f"The final node '{t_star}' has failed (success_flag=0).")
@@ -139,6 +174,9 @@ def build_locate_prompt(
         "- High error_prob + low success_flag = strong evidence of direct error\n"
         "- dependency UNSATISFIED = cascade victim, not root cause\n"
         "- LOW throughput at an executor is a strong signal\n\n"
+        f"Eligible root-cause node IDs: {json.dumps(node_list)}.\n"
+        "Return only eligible IDs; external boundary endpoints are context, "
+        "not repair candidates. If none can be identified, return an empty list.\n\n"
         "Respond ONLY with valid JSON:\n"
         '{"root_cause_nodes": ["<node_id>", ...], '
         '"root_cause_type": "<node_type>", '
@@ -170,6 +208,8 @@ def build_repair_prompt(
         "For each node in the region that shows anomalous state:\n"
         "1. Identify what went wrong\n"
         "2. Propose a specific corrective action\n\n"
+        f"Eligible repair node IDs: {json.dumps(node_list)}.\n"
+        "Do not repair external boundary endpoints.\n\n"
         "Respond ONLY with valid JSON:\n"
         '{"repaired_nodes": ["<node_id>", ...], '
         '"repairs": {"<node_id>": "<corrective_action>", ...}, '
@@ -180,10 +220,19 @@ def build_repair_prompt(
 
 
 def parse_locate_response(response_text: str, true_root: str,
-                           G: nx.DiGraph) -> dict:
+                           G: nx.DiGraph,
+                           allowed_nodes: set[str] | None = None) -> dict:
 
+    def reject_constant(value):
+        raise ValueError(f"non-finite JSON number: {value}")
 
-    import json, re
+    def unique_object(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise ValueError(f"duplicate JSON key: {key}")
+            obj[key] = value
+        return obj
 
     result = {
         "identified_nodes": [],
@@ -192,21 +241,56 @@ def parse_locate_response(response_text: str, true_root: str,
         "recovered_exact": False,
         "recovered_type": False,
         "recovered_hop2": False,
-        "raw": response_text[:500],
+        "raw": response_text[:500] if isinstance(response_text, str) else "",
+        "valid_json": False,
+        "valid_response": False,
+        "invalid_reason": "",
+        "explanation": "",
     }
 
+    if not isinstance(response_text, str):
+        result["invalid_reason"] = "invalid_json"
+        return result
 
     try:
 
-        clean = re.sub(r"```[a-z]*\n?", "", response_text).strip()
-        data = json.loads(clean)
-        result["identified_nodes"] = data.get("root_cause_nodes", [])
-        result["identified_type"] = data.get("root_cause_type", None)
-        result["confidence"] = float(data.get("confidence", 0.5))
-    except Exception:
-
-        matches = re.findall(r"'([a-z]+_\d+)'|\"([a-z]+_\d+)\"", response_text)
-        result["identified_nodes"] = list(set(m[0] or m[1] for m in matches))
+        clean = response_text.strip()
+        fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", clean,
+                              flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            clean = fenced.group(1)
+        data = json.loads(clean, parse_constant=reject_constant,
+                          object_pairs_hook=unique_object)
+    except (TypeError, ValueError):
+        result["invalid_reason"] = "invalid_json"
+        return result
+    result["valid_json"] = True
+    if not isinstance(data, dict):
+        result["invalid_reason"] = "expected_object"
+        return result
+    nodes = data.get("root_cause_nodes")
+    node_type = data.get("root_cause_type")
+    explanation = data.get("explanation")
+    confidence = data.get("confidence")
+    if (not isinstance(nodes, list)
+            or not all(isinstance(n, str) for n in nodes)
+            or not isinstance(node_type, str)
+            or not isinstance(explanation, str)
+            or isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0.0 <= confidence <= 1.0
+            or not math.isfinite(confidence)):
+        result["invalid_reason"] = "invalid_schema"
+        return result
+    allowed = set(G.nodes()) if allowed_nodes is None else set(allowed_nodes) & set(G.nodes())
+    if any(n not in allowed for n in nodes):
+        result["invalid_reason"] = "node_outside_selected_region"
+        return result
+    result["identified_nodes"] = list(dict.fromkeys(nodes))
+    result["identified_type"] = node_type
+    result["confidence"] = float(confidence)
+    result["explanation"] = explanation
+    result["valid_response"] = True
 
     true_type = G.nodes[true_root].get("node_type", "") if true_root in G else ""
 
@@ -215,7 +299,7 @@ def parse_locate_response(response_text: str, true_root: str,
         result["recovered_exact"] = True
 
 
-    if (result["identified_type"] or "").lower() == true_type.lower():
+    if true_type and (result["identified_type"] or "").lower() == true_type.lower():
         result["recovered_type"] = True
     for nid in result["identified_nodes"]:
         if nid in G and G.nodes[nid].get("node_type") == true_type:

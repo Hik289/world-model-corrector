@@ -1,13 +1,13 @@
 import argparse, hashlib, json, os, sys, time
 import numpy as np
+import networkx as nx
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wm_sar.agent_calling_tree import generate_calling_trees
 from wm_sar.engineering_baselines import run_all_baselines
 from wm_sar import amplification as amp
-from wm_sar.baselines import wm_sar as wm_sar_select
-from wm_sar.engineering_baselines import _evaluate_repair
+from wm_sar.engineering_baselines import wmsar_repair
 
 
 ALPHA_VALUES = [0.7, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4]
@@ -15,51 +15,46 @@ KEY_METHODS = ["Greedy-Point(K=1)", "Window-4-Point", "TopK-Point(K=5)",
                "LocalRepair-2Hop", "LocalRepair-3Hop", "WM-SAR"]
 
 
-def inject_with_gain(G_orig, alpha: float):
+def inject_with_gain(G_orig, alpha: float, root_cause_node=None):
 
     import copy
     G = copy.deepcopy(G_orig)
-    root = G.graph.get("gt_region", set())
-    root_nodes = sorted(root)
+    rc = root_cause_node if root_cause_node is not None else G.graph.get("root_cause_node")
+    if rc not in G:
+        raise ValueError("the injected root-cause node must be specified")
+    if not np.isfinite(alpha) or alpha < 0:
+        raise ValueError("alpha must be finite and non-negative")
+    topo = list(nx.topological_sort(G))
 
 
     for n in G.nodes():
         G.nodes[n]["err"] = 0.0
 
 
-    if not root_nodes:
-        return G
-
-    rc = root_nodes[0]
     G.nodes[rc]["err"] = 0.6
 
 
-    visited = {rc}
-    queue = [rc]
     stable_seed = int.from_bytes(
         hashlib.sha256(str(rc).encode("utf-8")).digest()[:8],
         "big",
     )
     rng = np.random.default_rng(stable_seed)
-    while queue:
-        nxt = []
-        for n in queue:
-            for child in G.successors(n):
-                child_err = alpha * G.nodes[n]["err"] + abs(float(rng.normal(0, 0.04)))
-                G.nodes[child]["err"] = max(G.nodes[child]["err"], child_err)
-                if child not in visited:
-                    visited.add(child)
-                    nxt.append(child)
-        queue = nxt
+    for node in topo:
+        if G.nodes[node]["err"] <= 0:
+            continue
+        for child in G.successors(node):
+            child_err = alpha * G.nodes[node]["err"] + abs(float(rng.normal(0, 0.04)))
+            G.nodes[child]["err"] = max(G.nodes[child]["err"], child_err)
+    mean_error = float(np.mean([G.nodes[node]["err"] for node in G]))
+    G.graph["gt_region"] = {node for node in G if G.nodes[node]["err"] > mean_error}
+    G.graph["root_cause_node"] = rc
+    for node in G:
+        G.nodes[node]["status"] = "error" if node in G.graph["gt_region"] else "ok"
     return G
 
 
 def wmsar_result(G):
-    try:
-        region = wm_sar_select(G)
-        return _evaluate_repair(G, region, "WM-SAR")
-    except Exception:
-        return None
+    return wmsar_repair(G)
 
 
 def main():
@@ -70,35 +65,28 @@ def main():
                     default=os.path.join(os.path.dirname(__file__),
                                          "results", "exp_cascade_gain.json"))
     args = ap.parse_args()
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    if args.n < 1:
+        ap.error("n must be at least 1")
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
     print(f"\n{'='*60}\n  Cascade Gain Sensitivity (n={args.n})\n{'='*60}")
 
 
     trees = generate_calling_trees(n=args.n, seed=args.seed)
 
-    output = {"alphas": ALPHA_VALUES, "n": args.n, "seed": args.seed, "results": {}}
+    output = {"alphas": ALPHA_VALUES, "n": args.n, "seed": args.seed,
+              "weight_norm": 0.9, "rollout_model": "legacy_single_channel_proxy",
+              "results": {}}
 
     for alpha in ALPHA_VALUES:
         print(f"\n  α={alpha:.2f} ...", end=" ", flush=True)
         t0 = time.time()
 
 
-        G_list = [inject_with_gain(t.G, alpha) for t in trees]
+        G_list = [inject_with_gain(t.G, alpha, t.root_cause_node) for t in trees]
 
 
         summaries = run_all_baselines(G_list, verbose=False)
-
-
-        wmsar_results = [wmsar_result(G) for G in G_list]
-        wmsar_valid = [r for r in wmsar_results if r is not None]
-        if wmsar_valid:
-            summaries["WM-SAR"] = {
-                "mean_rho_reduction": float(np.mean([r.rho_reduction for r in wmsar_valid])),
-                "mean_region_size":   float(np.mean([r.region_size   for r in wmsar_valid])),
-                "mean_mse_32":        float(np.mean([r.mse_profile_after.get(32, 0) for r in wmsar_valid])),
-                "mean_slope":         float(np.mean([r.growth_slope_after for r in wmsar_valid])),
-            }
 
 
         rho_before = float(np.mean([

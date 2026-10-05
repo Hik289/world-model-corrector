@@ -11,9 +11,9 @@ COLUMNS = ["Variant", "Recovery", "dGEAF", "dErrorSlope", "PDred", "RegionIoU", 
 
 def _variants():
     return {
-        "w/o TargetAmplification": WMSARConfig(use_target=False),
+        "w/o GEAF": WMSARConfig(use_geaf=False),
         "w/o Coupling": WMSARConfig(use_coupling=False),
-        "w/o Uncertainty": WMSARConfig(use_uncertainty=False),
+        "w/o SpectralRelief": WMSARConfig(use_rho_relief=False),
         "w/o RegionGrowing": WMSARConfig(use_growing=False),
         "w/o RegionPruning": WMSARConfig(use_pruning=False),
         "PointwiseGEA": WMSARConfig(use_growing=False, n_seeds=4),

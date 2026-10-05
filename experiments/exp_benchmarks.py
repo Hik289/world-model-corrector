@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from wm_sar.benchmark_graphs import BENCHMARK_GENERATORS
 from wm_sar.engineering_baselines import run_all_baselines
 from wm_sar import amplification as amp
-from wm_sar.baselines import wm_sar as wm_sar_select
+from wm_sar.engineering_baselines import _aggregate, wmsar_repair
 
 
 def benchmark_stats(trees) -> dict:
@@ -30,28 +30,7 @@ def benchmark_stats(trees) -> dict:
 
 
 def wmsar_summary(trees) -> dict:
-
-    from wm_sar.engineering_baselines import _evaluate_repair
-    results = []
-    for t in trees:
-        G = t.G
-        try:
-            region = wm_sar_select(G)
-            r = _evaluate_repair(G, region, "WM-SAR")
-            results.append(r)
-        except Exception:
-            pass
-    if not results:
-        return {}
-    return {
-        "mean_rho_reduction": float(np.mean([r.rho_reduction for r in results])),
-        "std_rho_reduction":  float(np.std( [r.rho_reduction for r in results])),
-        "mean_mse_32":        float(np.mean([r.mse_profile_after.get(32, 0) for r in results])),
-        "mean_slope":         float(np.mean([r.growth_slope_after for r in results])),
-        "mean_region_size":   float(np.mean([r.region_size for r in results])),
-        "mean_iou":           float(np.mean([r.iou_vs_gt for r in results])),
-        "n": len(results),
-    }
+    return _aggregate([wmsar_repair(t.G) for t in trees])
 
 
 def print_table(bench_name: str, summaries: dict, wmsar_s: dict, stats: dict):
@@ -71,16 +50,16 @@ def print_table(bench_name: str, summaries: dict, wmsar_s: dict, stats: dict):
             continue
         s = summaries[m]
         print(f"{m:<26} {s.get('mean_rho_reduction',0):>7.3f} "
-              f"{s.get('mean_mse_32',0):>8.2f} "
-              f"{s.get('mean_slope',0):>+11.5f} "
+              f"{s.get('NodeMSE_after', {}).get(32, float('nan')):>8.2f} "
+              f"{s.get('mean_growth_slope_after', float('nan')):>+11.5f} "
               f"{s.get('mean_region_size',0):>6.1f} "
               f"{s.get('mean_iou',0):>6.3f}")
     print(SEP)
     if wmsar_s:
         s = wmsar_s
         print(f"{'WM-SAR ★':<26} {s.get('mean_rho_reduction',0):>7.3f} "
-              f"{s.get('mean_mse_32',0):>8.2f} "
-              f"{s.get('mean_slope',0):>+11.5f} "
+              f"{s.get('NodeMSE_after', {}).get(32, float('nan')):>8.2f} "
+              f"{s.get('mean_growth_slope_after', float('nan')):>+11.5f} "
               f"{s.get('mean_region_size',0):>6.1f} "
               f"{s.get('mean_iou',0):>6.3f}")
     print(SEP)
@@ -94,9 +73,13 @@ def main():
                     default=os.path.join(os.path.dirname(__file__),
                                          "results", "exp_benchmarks.json"))
     args = ap.parse_args()
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    if args.n < 1:
+        ap.error("n must be at least 1")
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
     output = {"n": args.n, "seed": args.seed,
+              "weight_norm": 0.9, "evaluation_kind": "benchmark_inspired_topology",
+              "rollout_model": "legacy_single_channel_proxy",
               "benchmarks": list(BENCHMARK_GENERATORS.keys()),
               "results": {}}
 
@@ -110,9 +93,7 @@ def main():
 
         summaries = run_all_baselines(G_list, verbose=True)
 
-        wmsar_s   = wmsar_summary(trees)
-        if wmsar_s:
-            summaries["WM-SAR"] = wmsar_s
+        wmsar_s = summaries.get("WM-SAR", {})
 
         stats = benchmark_stats(trees)
         print_table(bench_name, summaries, wmsar_s, stats)

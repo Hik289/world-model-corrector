@@ -6,3 +6,5 @@ openai>=1.0
 google-genai>=1.0
 
 tqdm>=4.60
+matplotlib>=3.5
+tabulate>=0.9

@@ -7,10 +7,8 @@ from wm_sar.agent_calling_tree import generate_calling_trees
 from wm_sar import amplification as amp
 from wm_sar.engineering_baselines import _evaluate_repair
 from wm_sar.region_extractor import WMSAR, WMSARConfig
-from wm_sar.baselines import wm_sar as _wm_sar_fn
 def wm_sar_default(G):
-    r = _wm_sar_fn(G)
-    return r.nodes if hasattr(r, "nodes") else set(r)
+    return WMSAR(WMSARConfig()).repair_region(G)
 
 
 K_VALUES = [2, 3, 5, 7, 8, 10, 12, 15, 20]
@@ -55,7 +53,7 @@ def local_khop(G, k_budget):
 
 def wmsar_with_budget(G, k_budget):
 
-    cfg = WMSARConfig(max_region_size=k_budget, n_seeds=min(3, k_budget))
+    cfg = WMSARConfig(max_region_size=k_budget)
     extractor = WMSAR(cfg)
     return extractor.repair_region(G)
 
@@ -70,17 +68,12 @@ def oracle_k(G, k_budget):
 
 
 def evaluate(G, region, method):
-    if not region:
-        return {"rho_reduction": 0.0, "region_size": 0}
-    try:
-        r = _evaluate_repair(G, region, method)
-        return {
-            "rho_reduction": r.rho_reduction,
-            "region_size":   r.region_size,
-            "mse_32":        r.mse_profile_after.get(32, 0.0),
-        }
-    except Exception:
-        return {"rho_reduction": 0.0, "region_size": len(region)}
+    r = _evaluate_repair(G, region, method)
+    return {
+        "rho_reduction": r.rho_reduction,
+        "region_size": r.region_size,
+        "mse_32": r.mse_profile_after[32],
+    }
 
 
 def main():
@@ -91,7 +84,9 @@ def main():
                     default=os.path.join(os.path.dirname(__file__),
                                          "results", "exp_budget.json"))
     args = ap.parse_args()
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    if args.n < 1:
+        ap.error("n must be at least 1")
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
     print(f"\n{'='*60}\n  Budget Sensitivity (n={args.n})\n{'='*60}")
 
@@ -114,6 +109,8 @@ def main():
         "K_values": K_VALUES,
         "n": args.n,
         "seed": args.seed,
+        "weight_norm": 0.9,
+        "rollout_model": "legacy_single_channel_proxy",
         "oracle_full": oracle_full,
         "wmsar_default": wmsar_full,
         "results": {}
@@ -134,13 +131,11 @@ def main():
         for mname, selector_fn in SELECTORS.items():
             rr_list = []
             for G in G_list:
-                try:
-                    region = selector_fn(G, K)
-                    res    = evaluate(G, region, mname)
-                    rr_list.append(res["rho_reduction"])
-                except Exception:
-                    pass
+                region = selector_fn(G, K)
+                res = evaluate(G, region, mname)
+                rr_list.append(res["rho_reduction"])
             K_results[mname] = {
+                "n": len(rr_list),
                 "mean_rho_reduction": float(np.mean(rr_list)) if rr_list else 0.0,
                 "std_rho_reduction":  float(np.std(rr_list))  if rr_list else 0.0,
             }

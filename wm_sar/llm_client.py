@@ -29,6 +29,7 @@ class LLMResult:
     completion_tokens: int
     latency_ms: float
     raw_response: str
+    usage_estimated: bool = False
 
     @property
     def total_tokens(self) -> int:
@@ -221,7 +222,7 @@ class LLMClient:
             raise ValueError(f"Unsupported LLM backend: {self.backend}")
 
 
-    def _call(self, system: str, user: str) -> tuple[str, int, int, float]:
+    def _call(self, system: str, user: str) -> tuple[str, Optional[int], Optional[int], float]:
 
         t0 = time.time()
         for attempt in range(self.max_retries):
@@ -237,8 +238,9 @@ class LLMClient:
                         max_tokens=self.max_tokens,
                     )
                     raw = resp.choices[0].message.content or ""
-                    pt  = resp.usage.prompt_tokens
-                    ct  = resp.usage.completion_tokens
+                    usage = getattr(resp, "usage", None)
+                    pt = getattr(usage, "prompt_tokens", None)
+                    ct = getattr(usage, "completion_tokens", None)
 
                 elif self.backend == "gemini":
                     prompt = f"{system}\n\n{user}"
@@ -249,9 +251,11 @@ class LLMClient:
                     raw = resp.text or ""
 
                     usage = getattr(resp, "usage_metadata", None)
-                    pt = getattr(usage, "prompt_token_count", len(prompt.split()) * 4 // 3)
-                    ct = getattr(usage, "candidates_token_count", len(raw.split()) * 4 // 3)
+                    pt = getattr(usage, "prompt_token_count", None)
+                    ct = getattr(usage, "candidates_token_count", None)
 
+                pt = pt if isinstance(pt, int) and not isinstance(pt, bool) and pt >= 0 else None
+                ct = ct if isinstance(ct, int) and not isinstance(ct, bool) and ct >= 0 else None
                 latency = (time.time() - t0) * 1000
                 return raw, pt, ct, latency
 
@@ -262,6 +266,16 @@ class LLMClient:
                     raise RuntimeError(f"LLM call failed after {self.max_retries} tries: {e}") from e
 
         raise RuntimeError("unreachable")
+
+
+    @staticmethod
+    def _legacy_usage(pt, ct, system, user, raw):
+        estimated = pt is None or ct is None
+        if pt is None:
+            pt = len(f"{system}\n\n{user}".split()) * 4 // 3
+        if ct is None:
+            ct = len(raw.split()) * 4 // 3
+        return pt, ct, estimated
 
 
     @staticmethod
@@ -307,6 +321,7 @@ class LLMClient:
             steps_text=steps_text,
         )
         raw, pt, ct, lat = self._call(_LOCATE_SYSTEM, user)
+        pt, ct, estimated = self._legacy_usage(pt, ct, _LOCATE_SYSTEM, user, raw)
         parsed = self._parse_json(raw)
         return LLMResult(
             identified_steps=parsed.get("root_cause_steps", []),
@@ -316,6 +331,7 @@ class LLMClient:
             completion_tokens=ct,
             latency_ms=lat,
             raw_response=raw,
+            usage_estimated=estimated,
         )
 
     def repair_region(
@@ -336,6 +352,7 @@ class LLMClient:
             failure_desc=failure_desc,
         )
         raw, pt, ct, lat = self._call(_REPAIR_SYSTEM, user)
+        pt, ct, estimated = self._legacy_usage(pt, ct, _REPAIR_SYSTEM, user, raw)
         parsed = self._parse_json(raw)
         repaired = list(parsed.get("repaired_steps", step_nums))
         return LLMResult(
@@ -346,6 +363,7 @@ class LLMClient:
             completion_tokens=ct,
             latency_ms=lat,
             raw_response=raw,
+            usage_estimated=estimated,
         )
 
     def full_replan(
@@ -361,6 +379,7 @@ class LLMClient:
             steps_text=steps_text,
         )
         raw, pt, ct, lat = self._call(_FULLPLAN_SYSTEM, user)
+        pt, ct, estimated = self._legacy_usage(pt, ct, _FULLPLAN_SYSTEM, user, raw)
         parsed = self._parse_json(raw)
         return LLMResult(
             identified_steps=parsed.get("root_cause_steps", []),
@@ -370,6 +389,7 @@ class LLMClient:
             completion_tokens=ct,
             latency_ms=lat,
             raw_response=raw,
+            usage_estimated=estimated,
         )
 
     def chat(self, system: str, user: str) -> "ChatResult":
@@ -386,10 +406,12 @@ class LLMClient:
 @dataclass
 class ChatResult:
     text: str
-    prompt_tokens: int
-    completion_tokens: int
+    prompt_tokens: Optional[int]
+    completion_tokens: Optional[int]
     latency_ms: float
 
     @property
-    def total_tokens(self) -> int:
+    def total_tokens(self) -> Optional[int]:
+        if self.prompt_tokens is None or self.completion_tokens is None:
+            return None
         return self.prompt_tokens + self.completion_tokens

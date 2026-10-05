@@ -85,8 +85,8 @@ class WMSARCoreTests(unittest.TestCase):
     def test_cascade_gain_is_repeatable(self):
         tree = generate_calling_trees(n=1, seed=11)[0]
         graph = _failure_graph_from_tree(tree)
-        first = inject_with_gain(graph, 1.1)
-        second = inject_with_gain(graph, 1.1)
+        first = inject_with_gain(graph, 1.1, tree.root_cause_node)
+        second = inject_with_gain(graph, 1.1, tree.root_cause_node)
         self.assertEqual(
             nx.get_node_attributes(first, "err"),
             nx.get_node_attributes(second, "err"),

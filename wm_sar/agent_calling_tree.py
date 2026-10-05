@@ -154,7 +154,7 @@ def generate_calling_tree(
     try:
         cycles = list(nx.simple_cycles(G))
         for cycle in cycles:
-            if len(cycle) >= 2:
+            if len(cycle) >= 2 and G.has_edge(cycle[-1], cycle[0]):
                 G.remove_edge(cycle[-1], cycle[0])
     except Exception:
         pass

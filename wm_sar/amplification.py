@@ -22,11 +22,8 @@ def adjacency_matrix(G: nx.DiGraph) -> tuple[np.ndarray, list, dict]:
 def _spectral_radius(M: np.ndarray) -> float:
     if M.size == 0:
         return 0.0
-    try:
-        ev = np.linalg.eigvals(M)
-        return float(np.max(np.abs(ev)))
-    except Exception:
-        return float(np.abs(M).max())
+    ev = np.linalg.eigvals(M)
+    return float(np.max(np.abs(ev)))
 
 
 def target_reachable(G: nx.DiGraph, t_star: str | None = None) -> set:
@@ -39,94 +36,37 @@ def target_reachable(G: nx.DiGraph, t_star: str | None = None) -> set:
     return anc
 
 
-def geaf_node(G: nx.DiGraph, v: str, H: int = 4, weight_norm: float = 1.0) -> float:
+def geaf_node(G: nx.DiGraph, v: str, H: int = 4, weight_norm: float = 0.9) -> float:
 
 
     err = node_error(G, v)
 
-    local_nodes = {v}
-    frontier = {v}
-    for _ in range(H):
-        nxt = set()
-        for u in frontier:
-            nxt.update(G.successors(u))
-        frontier = nxt - local_nodes
-        local_nodes |= nxt
-        if not frontier:
-            break
-    sub_nodes = [n for n in local_nodes if G.has_node(n)]
-    if len(sub_nodes) < 2:
-
-        rho_local = 1.0
-    else:
-        idx = {n: i for i, n in enumerate(sub_nodes)}
-        m = len(sub_nodes)
-        A_loc = np.zeros((m, m))
-        sub = G.subgraph(sub_nodes)
-        for u, w in sub.edges():
-            A_loc[idx[u], idx[w]] = 1.0
-        rho_local = _spectral_radius(A_loc)
-    return float(err * max(rho_local, 1.0) * (weight_norm ** H))
+    local_nodes = nx.single_source_shortest_path_length(
+        G.to_undirected(as_view=True), v, cutoff=H
+    )
+    A_loc, _, _ = adjacency_matrix(G.subgraph(local_nodes))
+    rho_local = _spectral_radius(A_loc)
+    return float(err * rho_local * (weight_norm ** H))
 
 
-def geaf_all(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> dict:
+def geaf_all(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9) -> dict:
 
     return {v: geaf_node(G, v, H, weight_norm) for v in G.nodes()}
 
 
-def geaf_global(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> float:
+def geaf_global(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9) -> float:
 
     reach = target_reachable(G)
     g = geaf_all(G, H, weight_norm)
     return float(sum(g[v] for v in reach))
 
 
-def _estimate_propagation_gains(G: nx.DiGraph, weight_norm: float = 1.0
+def _estimate_propagation_gains(G: nx.DiGraph, weight_norm: float = 0.9
                                 ) -> tuple[float, float, float, float]:
+    return coupling_blocks_region(G, set(G.nodes()), weight_norm)
 
 
-    nodes, idx = _node_index(G)
-    n = len(nodes)
-    if n == 0:
-        return 0.0, 0.0, 0.0, 0.0
-
-    A, _, _ = adjacency_matrix(G)
-
-    L_X = weight_norm * _spectral_radius(A)
-
-
-    edge_types_out: dict[str, set] = {v: set() for v in G.nodes()}
-    edge_types_in: dict[str, set] = {v: set() for v in G.nodes()}
-    for u, v, data in G.edges(data=True):
-        etype = data.get("edge_type", "default")
-        edge_types_out[u].add(etype)
-        edge_types_in[v].add(etype)
-
-    avg_out_diversity = float(np.mean([len(s) for s in edge_types_out.values()])) if n > 0 else 0.0
-    avg_in_diversity = float(np.mean([len(s) for s in edge_types_in.values()])) if n > 0 else 0.0
-
-    errs = np.array([node_error(G, v) for v in G.nodes()])
-    mean_err = float(np.mean(errs)) + 1e-9
-
-
-    L_A = weight_norm * avg_in_diversity * mean_err * 0.3
-
-
-    M_X = weight_norm * avg_out_diversity * mean_err * 0.2
-
-
-    high_err = set(v for v in G.nodes() if node_error(G, v) > mean_err)
-    n_edges = G.number_of_edges()
-    if n_edges > 0:
-        high_err_edges = sum(1 for u, v in G.edges() if u in high_err or v in high_err)
-        M_A = weight_norm * (high_err_edges / n_edges) * 0.5
-    else:
-        M_A = 0.0
-
-    return float(L_X), float(L_A), float(M_X), float(M_A)
-
-
-def coupling_blocks_region(G: nx.DiGraph, region: set, weight_norm: float = 1.0
+def coupling_blocks_region(G: nx.DiGraph, region: set, weight_norm: float = 0.9
                             ) -> tuple[float, float, float, float]:
 
 
@@ -153,17 +93,10 @@ def coupling_blocks_region(G: nx.DiGraph, region: set, weight_norm: float = 1.0
         edge_types_in[v].add(etype)
 
 
-    for u, v, d in G.edges(data=True):
-        etype = d.get("edge_type", "default")
-        if u not in region and v in region:
-            edge_types_in[v].add(etype)
-        if u in region and v not in region:
-            edge_types_out[u].add(etype)
-
     avg_in_div = float(np.mean([len(s) for s in edge_types_in.values()])) if m > 0 else 0.0
     avg_out_div = float(np.mean([len(s) for s in edge_types_out.values()])) if m > 0 else 0.0
     errs = np.array([node_error(G, r) for r in region])
-    mean_err = float(np.mean(errs)) + 1e-9
+    mean_err = float(np.mean(errs))
 
     L_A = weight_norm * avg_in_div * mean_err * 0.3
     M_X = weight_norm * avg_out_div * mean_err * 0.2
@@ -186,7 +119,7 @@ def rho_B_from_blocks(L_X: float, L_A: float, M_X: float, M_A: float) -> float:
     return 0.5 * (L_X + M_A + np.sqrt(max(disc, 0.0)))
 
 
-def coupling_factor(G: nx.DiGraph, v: str, weight_norm: float = 1.0) -> float:
+def coupling_factor(G: nx.DiGraph, v: str, weight_norm: float = 0.9) -> float:
 
 
     local = set(G.predecessors(v)) | set(G.successors(v)) | {v}
@@ -194,13 +127,13 @@ def coupling_factor(G: nx.DiGraph, v: str, weight_norm: float = 1.0) -> float:
     return float(L_A * M_X)
 
 
-def rho_B(G: nx.DiGraph, region: set, weight_norm: float = 1.0) -> float:
+def rho_B(G: nx.DiGraph, region: set, weight_norm: float = 0.9) -> float:
 
     L_X, L_A, M_X, M_A = coupling_blocks_region(G, region, weight_norm)
     return rho_B_from_blocks(L_X, L_A, M_X, M_A)
 
 
-def rho_B_complement(G: nx.DiGraph, region: set, weight_norm: float = 1.0) -> float:
+def rho_B_complement(G: nx.DiGraph, region: set, weight_norm: float = 0.9) -> float:
 
 
     complement = set(G.nodes()) - region
@@ -209,29 +142,43 @@ def rho_B_complement(G: nx.DiGraph, region: set, weight_norm: float = 1.0) -> fl
     return rho_B(G, complement, weight_norm)
 
 
+def coupled_error_envelope(z0, B, epsilon, H: int) -> np.ndarray:
+    if not isinstance(H, (int, np.integer)) or H < 0:
+        raise ValueError("H must be a non-negative integer")
+    state = np.asarray(z0, dtype=float)
+    operator = np.asarray(B, dtype=float)
+    forcing = np.asarray(epsilon, dtype=float)
+    if state.shape != (2,) or forcing.shape != (2,) or operator.shape != (2, 2):
+        raise ValueError("z0 and epsilon must have shape (2,), and B must have shape (2, 2)")
+    if any(not np.all(np.isfinite(value)) or np.any(value < 0)
+           for value in (state, operator, forcing)):
+        raise ValueError("z0, B, and epsilon must be finite and non-negative")
+    envelope = np.empty((H + 1, 2), dtype=float)
+    envelope[0] = state
+    for step in range(H):
+        envelope[step + 1] = operator @ envelope[step] + forcing
+    return envelope
+
+
 def phi_H_regret(H: int, gamma: float, rho: float) -> float:
-
-
-    eps = 1e-9
-    if abs(rho - 1.0) < eps:
-
-        if abs(gamma - 1.0) < eps:
-
-            return float(H * (H - 1) / 2.0)
-
-
-        gm1 = gamma - 1.0
-        gH = gamma ** H
-        return float(H * gH / gm1 + gamma * (1.0 - gH) / (gm1 * gm1))
-    t1 = (1 - (gamma * rho) ** H) / (1 - gamma * rho + eps) if abs(1 - gamma * rho) > eps else H
-    t2 = (1 - gamma ** H) / (1 - gamma + eps) if abs(1 - gamma) > eps else H
-    return float((t1 - t2) / (rho - 1.0))
+    if H < 0:
+        raise ValueError("H must be non-negative")
+    if gamma < 0 or rho < 0:
+        raise ValueError("gamma and rho must be non-negative")
+    factor = gamma * rho
+    total = 0.0
+    term = 1.0
+    for _ in range(H):
+        total += term
+        term *= factor
+    return float(total)
 
 
 def return_error_bound(G: nx.DiGraph, region: set, H: int = 8,
                        gamma: float = 0.95, L_R: float = 1.0,
                        kappa: float = 1.0, epsilon: float = None,
-                       weight_norm: float = 1.0) -> dict:
+                       weight_norm: float = 0.9,
+                       epsilon_R: float | None = None) -> dict:
 
 
     L_X, L_A, M_X, M_A = _estimate_propagation_gains(G, weight_norm)
@@ -239,7 +186,7 @@ def return_error_bound(G: nx.DiGraph, region: set, H: int = 8,
     if epsilon is None:
 
         errs = [node_error(G, v) for v in G.nodes()]
-        epsilon = float(np.mean(errs)) + 1e-9
+        epsilon = float(np.mean(errs)) if errs else 0.0
 
     phi_pre = phi_H_regret(H, gamma, rho_pre)
 
@@ -247,10 +194,11 @@ def return_error_bound(G: nx.DiGraph, region: set, H: int = 8,
     rho_post = rho_B_complement(G, region, weight_norm)
     phi_post = phi_H_regret(H, gamma, rho_post)
 
-    epsilon_R = 2 * L_R * epsilon
+    if epsilon_R is None:
+        epsilon_R = L_R * epsilon
 
-    bound_pre = 2 * L_R * kappa * epsilon * phi_pre + epsilon_R * H
-    bound_post = 2 * L_R * kappa * epsilon * phi_post + epsilon_R * H
+    bound_pre = 2 * L_R * kappa * epsilon * phi_pre + 2 * epsilon_R * H
+    bound_post = 2 * L_R * kappa * epsilon * phi_post + 2 * epsilon_R * H
 
     return {
         "rho_pre": rho_pre,
@@ -266,7 +214,7 @@ def return_error_bound(G: nx.DiGraph, region: set, H: int = 8,
 
 
 def simulate_error_propagation(G: nx.DiGraph, repaired: set,
-                                H: int = 32, weight_norm: float = 1.0
+                                H: int = 32, weight_norm: float = 0.9
                                 ) -> dict[int, float]:
 
 
@@ -309,7 +257,7 @@ def error_growth_slope(mse_dict: dict[int, float],
     return slope
 
 
-def phi_H(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> dict:
+def phi_H(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9) -> dict:
 
     A, nodes, idx = adjacency_matrix(G)
     ones = np.ones(len(nodes))
@@ -321,7 +269,7 @@ def phi_H(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> dict:
     return {nodes[i]: float(field[i]) for i in range(len(nodes))}
 
 
-def phi_H_target(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0,
+def phi_H_target(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9,
                   t_star: str | None = None) -> dict:
 
     base = phi_H(G, H, weight_norm)
@@ -342,7 +290,7 @@ def phi_H_edge(G: nx.DiGraph, node_field: dict, alpha: float = 0.5) -> dict:
     return out
 
 
-def GEAF(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> float:
+def GEAF(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9) -> float:
 
     return geaf_global(G, H, weight_norm)
 
@@ -360,7 +308,7 @@ def error_slope(G: nx.DiGraph) -> float:
 
 
 def target_amplify(G: nx.DiGraph, region: set, H: int = 4,
-                   weight_norm: float = 1.0, edge_field=None) -> float:
+                   weight_norm: float = 0.9, edge_field=None) -> float:
 
     tfield = phi_H_target(G, H, weight_norm)
     val = sum(tfield.get(v, 0.0) for v in region)
@@ -371,11 +319,11 @@ def target_amplify(G: nx.DiGraph, region: set, H: int = 4,
     return float(val)
 
 
-def global_rho_B(G: nx.DiGraph, weight_norm: float = 1.0) -> float:
+def global_rho_B(G: nx.DiGraph, weight_norm: float = 0.9) -> float:
     return rho_B(G, target_reachable(G), weight_norm)
 
 
-def spectral_summary(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> dict:
+def spectral_summary(G: nx.DiGraph, H: int = 4, weight_norm: float = 0.9) -> dict:
     return {
         "GEAF": GEAF(G, H, weight_norm),
         "rho_B": global_rho_B(G, weight_norm),
@@ -384,6 +332,6 @@ def spectral_summary(G: nx.DiGraph, H: int = 4, weight_norm: float = 1.0) -> dic
     }
 
 
-def coupling_blocks(G: nx.DiGraph, region: set, weight_norm: float = 1.0):
+def coupling_blocks(G: nx.DiGraph, region: set, weight_norm: float = 0.9):
 
     return coupling_blocks_region(G, region, weight_norm)

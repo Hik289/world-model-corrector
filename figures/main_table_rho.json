@@ -1,0 +1,18 @@
+{
+  "source": "user_provided_main_table",
+  "source_date": "2026-10-05",
+  "testbed": "Agent Calling-Tree",
+  "uncertainty": "Reported plus/minus values; the supplied table does not specify their statistical interpretation.",
+  "rows": [
+    {"method": "Greedy-Point(K=1)", "label": "Greedy\nPoint", "size": 1.0, "rho_reduction": 0.22, "rho_uncertainty": 0.06},
+    {"method": "TopK-Point(K=3)", "label": "TopK-3\nPoint", "size": 3.0, "rho_reduction": 0.68, "rho_uncertainty": 0.09},
+    {"method": "TopK-Point(K=5)", "label": "TopK-5\nPoint", "size": 5.0, "rho_reduction": 1.08, "rho_uncertainty": 0.10},
+    {"method": "Window-2-Point", "label": "Window-2\nPoint", "size": 2.0, "rho_reduction": 0.50, "rho_uncertainty": 0.08},
+    {"method": "Window-4-Point", "label": "Window-4\nPoint", "size": 4.0, "rho_reduction": 0.82, "rho_uncertainty": 0.09},
+    {"method": "Window-8-Point", "label": "Window-8\nPoint", "size": 8.0, "rho_reduction": 1.30, "rho_uncertainty": 0.09},
+    {"method": "LocalRepair-2Hop", "label": "LocalRep\n2-Hop", "size": 18.3, "rho_reduction": 1.81, "rho_uncertainty": 0.06},
+    {"method": "CascadeRepair", "label": "Cascade\nRepair", "size": 7.3, "rho_reduction": 1.26, "rho_uncertainty": 0.10},
+    {"method": "ReCore", "label": "ReCore", "size": 8.3, "rho_reduction": 1.95, "rho_uncertainty": 0.05},
+    {"method": "Oracle", "label": "Oracle", "size": 8.1, "rho_reduction": 1.32, "rho_uncertainty": 0.10}
+  ]
+}

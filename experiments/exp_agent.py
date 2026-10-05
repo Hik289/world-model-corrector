@@ -22,6 +22,8 @@ def main():
                         default=os.path.join(os.path.dirname(__file__),
                                               "results", "exp_agent.json"))
     args = parser.parse_args()
+    if args.n < 1 or args.H_max < 1:
+        parser.error("n and H_max must be at least 1")
 
     print(f"\n{'='*60}")
     print(f"  Agent Calling-Tree Experiment: n={args.n}, seed={args.seed}")
@@ -37,7 +39,7 @@ def main():
           f"(range {min(sizes)}-{max(sizes)})")
 
 
-    rhos = [amp.rho_B(G, set(G.nodes()), weight_norm=1.0) for G in G_list]
+    rhos = [amp.rho_B(G, set(G.nodes()), weight_norm=0.9) for G in G_list]
     slopes = [amp.error_growth_slope(
                   amp.simulate_error_propagation(G, set(), H=args.H_max),
                   h_start=4, h_end=args.H_max)
@@ -58,15 +60,17 @@ def main():
 
 
     print("\n  Running baselines...\n")
-    print(f"  {'Method':<28}  {'ρ_red':>6}  {'MSE@32':>8}  {'slope':>7}  {'conn':>5}  {'IoU':>6}")
+    mse_heading = f"MSE@{args.H_max}"
+    print(f"  {'Method':<28}  {'ρ_red':>6}  {mse_heading:>8}  {'slope':>7}  {'conn':>5}  {'IoU':>6}")
     print(f"  {'-'*68}")
-    summaries = run_all_baselines(G_list, verbose=True)
+    summaries = run_all_baselines(G_list, verbose=True, H_max=args.H_max)
 
 
     print(f"\n{'='*60}")
     print("  Multi-step error table (NodeMSE@H)")
     print(f"{'='*60}")
-    horizons = [1, 4, 8, 16, 32]
+    horizons = sorted({h for h in (1, 4, 8, 16, 32, args.H_max)
+                       if h <= args.H_max})
     header = f"  {'Method':<28}" + "".join(f"  H={H:2d}" for H in horizons) + \
              "  slope_after  rho_red"
     print(header)
@@ -74,7 +78,7 @@ def main():
 
 
     methods_sorted = sorted(summaries.keys(),
-                             key=lambda m: summaries[m].get("NodeMSE_after", {}).get(32, 99))
+                             key=lambda m: summaries[m].get("NodeMSE_after", {}).get(args.H_max, float("inf")))
     for name in methods_sorted:
         s = summaries[name]
         mse_a = s.get("NodeMSE_after", {})
@@ -94,12 +98,15 @@ def main():
               f"bound_before={rb_b:.4f}  bound_after={rb_a:.4f}")
 
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
     output = {
         "n": args.n,
         "seed": args.seed,
         "H_max": args.H_max,
+        "weight_norm": 0.9,
+        "dispersion": "population_standard_deviation",
+        "rollout_model": "legacy_single_channel_proxy",
         "dataset_stats": {
             "mean_n_nodes": float(np.mean(sizes)),
             "std_n_nodes": float(np.std(sizes)),

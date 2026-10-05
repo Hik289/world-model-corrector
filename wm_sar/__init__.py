@@ -7,6 +7,7 @@ from . import (
     region_extractor,
     repair_executor,
 )
+from .region_extractor import ReCore, ReCoreConfig
 
 __all__ = [
     "data_generator",
@@ -16,6 +17,8 @@ __all__ = [
     "baselines",
     "repair_executor",
     "metrics",
+    "ReCore",
+    "ReCoreConfig",
 ]
 
 __version__ = "0.1.0"

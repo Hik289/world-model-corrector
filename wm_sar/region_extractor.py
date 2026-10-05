@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import networkx as nx
-import numpy as np
-
 from . import amplification as amp
 from .failure_graph import node_cost, node_error
 
@@ -12,7 +10,7 @@ from .failure_graph import node_cost, node_error
 @dataclass
 class WMSARConfig:
     H: int = 4
-    weight_norm: float = 1.0
+    weight_norm: float = 0.9
     max_region_size: int = 20
     n_seeds: int = 6
     lambda1: float = 1.2
@@ -26,6 +24,7 @@ class WMSARConfig:
     use_growing: bool = True
     use_pruning: bool = True
     use_rho_relief: bool = True
+    merge_candidates: bool = False
 
     def __post_init__(self):
         if self.H < 1:
@@ -87,12 +86,12 @@ class WMSAR:
             if v == t_star:
                 continue
             err = node_error(G, v)
-            geaf_v = self._geaf_cache.get(v, 1.0) if c.use_geaf else 1.0
+            geaf_v = self._geaf_cache.get(v, 0.0)
             kappa_v = self._kappa_cache.get(v, 0.0) if c.use_coupling else 0.0
 
-            s = err * max(geaf_v, 1e-9) * (1.0 + kappa_v)
+            s = err * geaf_v * (1.0 + kappa_v) if c.use_geaf else err
             scored.append((s, v))
-        scored.sort(reverse=True)
+        scored.sort(key=lambda item: (item[0], str(item[1])), reverse=True)
         return [v for _, v in scored[: c.n_seeds]]
 
 
@@ -118,26 +117,28 @@ class WMSAR:
             if not frontier:
                 break
 
-            best_u, best_gain = None, -1e9
+            best_u, best_gain, best_relief = None, float("-inf"), 0.0
             for u in sorted(frontier, key=str):
                 cand = region | {u}
 
                 rho_cand = amp.rho_B_complement(G, cand, c.weight_norm)
                 d_rho_relief = rho_current - rho_cand
 
-                d_err = node_error(G, u) * (1.0 + self._kappa_cache.get(u, 0.0))
-                cost = node_cost(G, u)
+                kappa_u = self._kappa_cache.get(u, 0.0) if c.use_coupling else 0.0
+                d_err = node_error(G, u) * (1.0 + kappa_u)
+                cost = 1.0 + len(set(und.neighbors(u)) & region) / len(region)
 
                 if c.use_rho_relief:
-                    gain = (c.lambda1 * d_err + c.lambda2 * d_rho_relief) / (c.lambda3 + cost)
+                    gain = c.lambda1 * d_err + c.lambda2 * d_rho_relief - c.lambda3 * cost
                 else:
-                    gain = (c.lambda1 * d_err) / (c.lambda3 + cost)
+                    gain = c.lambda1 * d_err - c.lambda3 * cost
 
                 if gain > best_gain:
-                    best_gain, best_u = gain, u
+                    best_gain, best_u, best_relief = gain, u, d_rho_relief
 
 
-            if best_u is not None and best_gain > 0.0:
+            should_expand = best_relief > 0.0 if c.use_rho_relief else best_gain > 0.0
+            if best_u is not None and should_expand:
                 region.add(best_u)
                 rho_current = amp.rho_B_complement(G, region, c.weight_norm)
             else:
@@ -153,33 +154,41 @@ class WMSAR:
 
         pruned = set(region)
         rho_pruned = amp.rho_B_complement(G, pruned, self.cfg.weight_norm)
-        for v in sorted(region, key=str):
-            if v == t_star:
-                continue
-            smaller = pruned - {v}
-            if not smaller:
-                continue
-            if len(smaller) > 1 and not nx.is_connected(
-                G.subgraph(smaller).to_undirected()
-            ):
-                continue
-            rho_smaller = amp.rho_B_complement(G, smaller, self.cfg.weight_norm)
+        changed = True
+        while changed and len(pruned) > 1:
+            changed = False
+            for v in sorted(pruned, key=str):
+                if v == t_star:
+                    continue
+                smaller = pruned - {v}
+                if not smaller:
+                    continue
+                if len(smaller) > 1 and not nx.is_connected(
+                    G.subgraph(smaller).to_undirected()
+                ):
+                    continue
+                rho_smaller = amp.rho_B_complement(G, smaller, self.cfg.weight_norm)
 
-            if rho_smaller <= rho_pruned + 1e-6:
-                pruned.discard(v)
-                rho_pruned = rho_smaller
+                if rho_smaller <= rho_pruned:
+                    pruned.discard(v)
+                    rho_pruned = rho_smaller
+                    changed = True
         return pruned if pruned else region
 
 
     def score(self, G: nx.DiGraph, region: set) -> float:
         if not region:
             return 0.0
-        err_cover = sum(node_error(G, r) for r in region)
-        kappa_mean = float(np.mean([self._kappa_cache.get(r, 0.0) for r in region]))
+        err_cover = sum(
+            node_error(G, r) * (
+                1.0 + (self._kappa_cache.get(r, 0.0) if self.cfg.use_coupling else 0.0)
+            )
+            for r in region
+        )
         rho_relief = self._rho_relief(G, region)
-        cost = sum(node_cost(G, r) for r in region) + 1.0
+        cost = len(region) + 1.0
 
-        num = err_cover * (1.0 + kappa_mean) * max(rho_relief, 1e-6)
+        num = err_cover * rho_relief
         return float(num / cost)
 
 
@@ -193,9 +202,16 @@ class WMSAR:
             if r:
                 raw.append(r)
 
-        merged = self._merge(raw)
+        merged = self._merge(raw) if self.cfg.merge_candidates else raw
+        seen = set()
         out = []
         for r in merged:
+            if self.cfg.merge_candidates:
+                r = self.prune(G, r)
+            key = frozenset(r)
+            if key in seen:
+                continue
+            seen.add(key)
             rr = Region(
                 nodes=r,
                 score=self.score(G, r),
@@ -258,3 +274,7 @@ class WMSAR:
             if not placed:
                 merged.append(set(r))
         return merged
+
+
+ReCoreConfig = WMSARConfig
+ReCore = WMSAR

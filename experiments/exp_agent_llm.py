@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -15,10 +16,69 @@ from wm_sar.engineering_baselines import (
 from wm_sar.region_extractor import WMSAR, WMSARConfig
 from wm_sar.llm_client import LLMClient
 from wm_sar.act_text import (
-    tree_to_text, build_locate_prompt, parse_locate_response,
+    CONTEXT_PROTOCOL_VERSION, tree_to_text, build_locate_prompt, parse_locate_response,
 )
 
 import networkx as nx
+
+LLM_METHODS = (
+    "Greedy-Point-LLM", "TopK-5-LLM", "Window-4-LLM", "Window-8-LLM",
+    "LocalRepair-2Hop-LLM", "Full-Graph-LLM", "WM-SAR-LLM",
+    "TraceScan-w1-LLM", "TraceScan-w2-LLM", "TraceScan-Full-LLM",
+    "LLMRepair-Full-Plan-LLM",
+)
+
+
+def load_resume_records(path, run_metadata, seed, n):
+    records = {}
+    expected_ids = {f"s{seed}_i{i:03d}" for i in range(n)}
+    required = {
+        "rec_exact", "rec_type", "rec_hop2", "tokens", "region_size",
+        "latency_ms", "valid_json", "valid_response",
+    }
+    with open(path) as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid resume JSON at line {line_number}; use a new output path") from exc
+            if not isinstance(record, dict) or record.get("run_metadata") != run_metadata:
+                raise ValueError(f"Incompatible resume protocol or model at line {line_number}; use a new output path")
+            instance_id = record.get("instance_id")
+            results = record.get("results")
+            if (not isinstance(instance_id, str) or instance_id not in expected_ids
+                    or record.get("seed") != seed
+                    or not isinstance(record.get("true_root"), str)
+                    or not isinstance(record.get("n_nodes"), int)
+                    or not isinstance(results, dict)
+                    or set(results) != set(LLM_METHODS)):
+                raise ValueError(f"Invalid resume instance at line {line_number}")
+            for result in results.values():
+                if (not isinstance(result, dict) or not required.issubset(result)
+                        or not isinstance(result["valid_json"], bool)
+                        or not isinstance(result["valid_response"], bool)
+                        or any(result[k] not in (0, 1) for k in ("rec_exact", "rec_type", "rec_hop2"))):
+                    raise ValueError(f"Invalid resume result at line {line_number}")
+                if result["valid_response"] and not result["valid_json"]:
+                    raise ValueError(f"Invalid resume validity flags at line {line_number}")
+                region_size, latency = result["region_size"], result["latency_ms"]
+                if (isinstance(region_size, bool) or not isinstance(region_size, int)
+                        or region_size < 0 or isinstance(latency, bool)
+                        or not isinstance(latency, (int, float))
+                        or not math.isfinite(latency) or latency < 0):
+                    raise ValueError(f"Invalid resume measurement at line {line_number}")
+                if (not result["valid_response"]
+                        and any(result[k] for k in ("rec_exact", "rec_type", "rec_hop2"))):
+                    raise ValueError(f"Invalid resume recovery at line {line_number}")
+                tokens = result["tokens"]
+                if tokens is not None and (isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0):
+                    raise ValueError(f"Invalid resume token count at line {line_number}")
+            if instance_id in records and records[instance_id] != record:
+                raise ValueError(f"Conflicting duplicate resume instance {instance_id}")
+            records[instance_id] = record
+    return list(records.values())
 
 
 def _topo_order(G: nx.DiGraph) -> list[str]:
@@ -60,6 +120,7 @@ def _build_full_plan_prompt(tree_text: str, node_list: list[str]) -> tuple[str, 
         "low throughput at executors is a strong signal.\n\n"
         "Step 2 — list, in topological order, every affected downstream node and "
         "a one-sentence corrective action for each.\n\n"
+        f"Eligible node IDs: {json.dumps(node_list)}.\n\n"
         "Respond ONLY with valid JSON of the form:\n"
         '{"root_cause_nodes": ["<node_id>"], '
         '"root_cause_type": "<node_type>", '
@@ -86,19 +147,37 @@ def _call_llm_on_region(
     else:
         system, user = prompt_builder(text, node_list, G)
     t0 = time.time()
-    resp = client.chat(system=system, user=user)
+    api_error = ""
+    token_cost = None
+    try:
+        resp = client.chat(system=system, user=user)
+    except Exception as exc:
+        parsed = parse_locate_response("", true_root, G,
+                                       allowed_nodes=set(node_list))
+        parsed["invalid_reason"] = "api_error"
+        api_error = type(exc).__name__
+    else:
+        pt, ct = resp.prompt_tokens, resp.completion_tokens
+        if all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in (pt, ct)):
+            token_cost = pt + ct
+        parsed = parse_locate_response(resp.text, true_root, G,
+                                       allowed_nodes=set(node_list))
     latency_ms = (time.time() - t0) * 1000.0
-    parsed = parse_locate_response(resp.text, true_root, G)
     return {
         "method": method_name,
-        "region_size": len(region),
-        "token_cost": resp.prompt_tokens + resp.completion_tokens,
+        "region_size": len(node_list),
+        "token_cost": token_cost,
         "latency_ms": latency_ms,
         "rec_exact": parsed["recovered_exact"],
         "rec_type": parsed["recovered_type"],
         "rec_hop2": parsed["recovered_hop2"],
         "identified_nodes": parsed["identified_nodes"],
         "confidence": parsed["confidence"],
+        "valid_json": parsed["valid_json"],
+        "valid_response": parsed["valid_response"],
+        "invalid_reason": parsed["invalid_reason"],
+        "explanation": parsed["explanation"],
+        "api_error": api_error,
     }
 
 
@@ -173,17 +252,31 @@ def aggregate(all_results: list[dict]) -> dict[str, dict]:
         n = len(rows)
         if n == 0:
             continue
+        valid_rows = [r for r in rows if r.get("valid_response") is True]
+        token_values = [r["token_cost"] for r in rows if r.get("token_cost") is not None]
         summaries[m] = {
             "n": n,
+            "n_attempted": n,
+            "n_valid": len(valid_rows),
+            "n_invalid": sum(r.get("valid_response") is False for r in rows),
+            "n_unverified": sum(r.get("valid_response") is None for r in rows),
+            "n_api_errors": sum(bool(r.get("api_error")) for r in rows),
+            "n_token_measured": len(token_values),
+            "recall_denominator": "attempted",
             "rec_exact":  float(np.mean([r["rec_exact"] for r in rows])),
             "rec_type":   float(np.mean([r["rec_type"] for r in rows])),
             "rec_hop2":   float(np.mean([r["rec_hop2"] for r in rows])),
-            "mean_tokens": float(np.mean([r["token_cost"] for r in rows])),
+            "mean_tokens": float(np.mean(token_values)) if token_values else None,
             "mean_region_size": float(np.mean([r["region_size"] for r in rows])),
             "mean_latency_ms": float(np.mean([r["latency_ms"] for r in rows])),
         }
+        for metric in ("rec_exact", "rec_type", "rec_hop2"):
+            summaries[m][f"{metric}_valid"] = (
+                float(np.mean([r[metric] for r in valid_rows])) if valid_rows else None
+            )
         summaries[m]["tok_per_rec_hop2"] = (
-            summaries[m]["mean_tokens"] / max(summaries[m]["rec_hop2"], 1e-6)
+            sum(token_values) / sum(r["rec_hop2"] for r in rows)
+            if len(token_values) == n and any(r["rec_hop2"] for r in rows) else None
         )
     return summaries
 
@@ -200,17 +293,23 @@ def build_per_instance(per_instance_rows: list[dict]) -> list[dict]:
             "true_root_type": row["true_root_type"],
             "n_nodes":       row["n_nodes"],
             "results": {},
+            "run_metadata": row.get("run_metadata"),
         }
         for method, r in row["results"].items():
             rec["results"][method] = {
                 "rec_exact":    int(bool(r["rec_exact"])),
                 "rec_type":     int(bool(r["rec_type"])),
                 "rec_hop2":     int(bool(r["rec_hop2"])),
-                "tokens":       int(r["token_cost"]),
+                "tokens":       int(r["token_cost"]) if r.get("token_cost") is not None else None,
                 "region_size":  int(r["region_size"]),
                 "latency_ms":   float(r["latency_ms"]),
                 "identified_nodes": list(r.get("identified_nodes", [])),
                 "confidence":   float(r.get("confidence", 0.0)),
+                "valid_json": r.get("valid_json"),
+                "valid_response": r.get("valid_response"),
+                "invalid_reason": r.get("invalid_reason", ""),
+                "explanation": r.get("explanation", ""),
+                "api_error": r.get("api_error", ""),
             }
         out.append(rec)
     return out
@@ -234,8 +333,14 @@ def main():
                         default=os.path.join(os.path.dirname(__file__),
                                               "results", "exp_agent_llm.json"))
     args = parser.parse_args()
+    if args.n < 1:
+        parser.error("n must be at least 1")
+    if not args.out.endswith(".json"):
+        parser.error("out must end with .json")
 
     seeds = [int(s) for s in args.seeds.split(",")] if args.seeds else [args.seed]
+    if len(set(seeds)) != len(seeds):
+        parser.error("seeds must be unique")
 
     print(f"\n{'='*60}")
     print("  Agent Calling-Tree LLM Experiment")
@@ -244,13 +349,20 @@ def main():
     print(f"{'='*60}\n")
 
     client = LLMClient(model=args.model, temperature=0.0, max_tokens=512)
+    run_metadata = {
+        "context_protocol": CONTEXT_PROTOCOL_VERSION,
+        "model": client.model,
+        "backend": client.backend,
+        "temperature": client.temperature,
+        "max_tokens": client.max_tokens,
+    }
 
     all_per_instance = []
     all_results      = []
     per_seed_outputs = {}
 
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
 
     for seed in seeds:
         print(f"\n  ── seed={seed} ──")
@@ -261,17 +373,10 @@ def main():
 
 
         done_ids: set[str] = set()
+        resume_records = []
         if args.resume and os.path.exists(jsonl_path):
-            with open(jsonl_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                        done_ids.add(rec["instance_id"])
-                    except Exception:
-                        pass
+            resume_records = load_resume_records(jsonl_path, run_metadata, seed, args.n)
+            done_ids = {rec["instance_id"] for rec in resume_records}
             if done_ids:
                 print(f"    [resume] {len(done_ids)} instances already in "
                       f"{jsonl_path}; will skip those.")
@@ -281,38 +386,23 @@ def main():
                 pass
 
 
-        if done_ids:
-            with open(jsonl_path) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    rec = json.loads(line)
-
-                    pseudo_res = {}
-                    for meth, r in rec["results"].items():
-                        pseudo_res[meth] = {
-                            "rec_exact":   r["rec_exact"],
-                            "rec_type":    r["rec_type"],
-                            "rec_hop2":    r["rec_hop2"],
-                            "token_cost":  r["tokens"],
-                            "region_size": r["region_size"],
-                            "latency_ms":  r["latency_ms"],
-                            "identified_nodes": r.get("identified_nodes", []),
-                            "confidence":  r.get("confidence", 0.0),
-                        }
-                    seed_results.append(pseudo_res)
-                    all_results.append(pseudo_res)
-                    row = {
-                        "instance_id":   rec["instance_id"],
-                        "seed":          rec["seed"],
-                        "true_root":     rec["true_root"],
-                        "true_root_type": rec.get("true_root_type", ""),
-                        "n_nodes":       rec["n_nodes"],
-                        "results":       pseudo_res,
-                    }
-                    seed_per_instance.append(row)
-                    all_per_instance.append(row)
+        for rec in resume_records:
+            pseudo_res = {}
+            for meth, r in rec["results"].items():
+                pseudo_res[meth] = dict(r, token_cost=r["tokens"])
+            seed_results.append(pseudo_res)
+            all_results.append(pseudo_res)
+            row = {
+                "instance_id": rec["instance_id"],
+                "seed": rec["seed"],
+                "true_root": rec["true_root"],
+                "true_root_type": rec.get("true_root_type", ""),
+                "n_nodes": rec["n_nodes"],
+                "results": pseudo_res,
+                "run_metadata": run_metadata,
+            }
+            seed_per_instance.append(row)
+            all_per_instance.append(row)
 
         for i, tree in enumerate(trees):
             G = tree.G
@@ -334,6 +424,7 @@ def main():
                     "true_root_type": G.nodes[true_root].get("node_type", ""),
                     "n_nodes":       G.number_of_nodes(),
                     "results":       res,
+                    "run_metadata": run_metadata,
                 }
                 seed_per_instance.append(row)
                 all_per_instance.append(row)
@@ -349,7 +440,7 @@ def main():
                 print(f"WM-SAR-E={wmsar_e:.0f}  TS-Full-E={ts_full_e:.0f}  "
                       f"LLMRep-E={lr_e:.0f}")
             except Exception as e:
-                print(f"ERROR: {e}")
+                raise RuntimeError(f"Failed to complete or persist {instance_id}") from e
 
 
         if seed_results:
@@ -357,7 +448,8 @@ def main():
             seed_payload = {
                 "n": len(seed_results),
                 "seed": seed,
-                "model": args.model,
+                "model": client.model,
+                "run_metadata": run_metadata,
                 "summaries": aggregate(seed_results),
                 "per_instance": build_per_instance(seed_per_instance),
             }
@@ -389,9 +481,11 @@ def main():
         s = summaries.get(m, {})
         if not s:
             continue
+        mean_tokens = s.get("mean_tokens")
+        tokens_text = f"{mean_tokens:>7.0f}" if mean_tokens is not None else f"{'n/a':>7}"
         print(f"  {m:<28}  {s.get('rec_hop2',0):>8.3f}  {s.get('rec_type',0):>8.3f}  "
               f"{s.get('rec_exact',0):>9.3f}  "
-              f"{s.get('mean_tokens',0):>7.0f}  {s.get('mean_region_size',0):>5.1f}")
+              f"{tokens_text}  {s.get('mean_region_size',0):>5.1f}")
 
 
     per_seed_wmsar = {}
@@ -409,12 +503,13 @@ def main():
         print(f"    cross-seed std = {cs_std:.3f}  "
               f"({'HEALTHY' if cs_std <= 0.05 else 'FLAG: >0.05'})")
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     output = {
         "n": len(all_results),
         "seeds": seeds,
         "seed": args.seed,
-        "model": args.model,
+        "model": client.model,
+        "run_metadata": run_metadata,
         "summaries": summaries,
         "per_seed_wmsar_rec_exact": per_seed_wmsar,
         "per_instance": build_per_instance(all_per_instance),

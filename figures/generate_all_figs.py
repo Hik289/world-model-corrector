@@ -62,73 +62,11 @@ def _save(fig, base_name: str) -> None:
 
 
 def fig_rho_reduction():
-    d = _load("exp_agent.json")
-    sums = d["summaries"]
-    order = ["Greedy-Point(K=1)", "Window-4-Point", "TopK-Point(K=5)",
-             "CascadeRepair", "Oracle", "LocalRepair-3Hop", "WM-SAR"]
-    rho_red = [sums[m]["mean_rho_reduction"] for m in order]
-    sizes   = [sums[m]["mean_region_size"]    for m in order]
-    rho_B0  = d["dataset_stats"]["mean_rho_B"]
-    short = {
-        "Greedy-Point(K=1)":  "Greedy\nPoint",
-        "Window-4-Point":     "Window-4\nPoint",
-        "TopK-Point(K=5)":    "TopK-5\nPoint",
-        "CascadeRepair":      "Cascade\nRepair",
-        "Oracle":             "Oracle",
-        "LocalRepair-3Hop":   "LocalRep\n3-Hop",
-        "WM-SAR":             "WM-SAR",
-    }
-    labels = [short[m] for m in order]
-    n = len(order)
-    x = np.arange(n)
-    w = 0.35
-    sizes_n = [s / 26.0 for s in sizes]
-
-    fig, ax1 = plt.subplots(figsize=(6.0, 3.2))
-    ax2 = ax1.twinx()
-    rho_colors  = [C_WMSAR if m == "WM-SAR" else C_BLUE for m in order]
-
-    size_color = C_ORANGE
-
-    ax1.bar(x - w/2, rho_red, width=w, color=rho_colors,
-            edgecolor="white", linewidth=0.5, zorder=3)
-    ax2.bar(x + w/2, sizes_n, width=w, color=size_color,
-            edgecolor="white", linewidth=0.5, zorder=3, alpha=0.85)
-
-    ax1.axhline(rho_B0, color=C_GRAY, linewidth=0.8, linestyle="--", zorder=2,
-                label=f"Unrepaired ρ(B)={rho_B0:.2f}")
-
-    for i, (r, s) in enumerate(zip(rho_red, sizes)):
-        ax1.text(i - w/2, r + 0.04, f"{r:.2f}",
-                 ha="center", va="bottom", fontsize=7.5,
-                 fontweight="bold" if order[i] == "WM-SAR" else "normal",
-                 color=C_WMSAR if order[i] == "WM-SAR" else C_DARK)
-        ax2.text(i + w/2, sizes_n[i] + 0.015, f"{s:.1f}",
-                 ha="center", va="bottom", fontsize=7, color=C_ORANGE)
-
-    ax1.set_ylabel("ρ(B) Reduction", fontsize=9)
-    ax2.set_ylabel("Region Size / 26", fontsize=9, color=C_ORANGE)
-    ax1.set_ylim(0, max(rho_B0 + 0.4, max(rho_red) + 0.4))
-    ax2.set_ylim(0, 1.2)
-    ax2.tick_params(axis="y", colors=C_ORANGE)
-    ax1.set_xticks(x); ax1.set_xticklabels(labels, fontsize=8)
-    ax1.tick_params(axis="x", length=0)
-    ax1.grid(axis="x", visible=False)
-    ax2.grid(False)
-    ax1.set_title(f"ρ(B) reduction vs. region size (n={d['n']} agent calling-trees)",
-                  fontsize=9.5, pad=4)
-
-
-    rho_patch  = mpatches.Patch(color=C_BLUE,   label="ρ(B) reduction (other)")
-    wmsar_patch= mpatches.Patch(color=C_WMSAR,  label="ρ(B) reduction (WM-SAR)")
-    size_patch = mpatches.Patch(color=C_ORANGE, label="Region size / 26")
-    base_line  = mlines.Line2D([], [], color=C_GRAY, linestyle="--", linewidth=0.8,
-                                label=f"Unrepaired ρ(B)={rho_B0:.2f}")
-    ax1.legend(handles=[rho_patch, wmsar_patch, size_patch, base_line],
-               loc="upper left", fontsize=7.5, framealpha=0.85,
-               handlelength=1.5, ncol=2)
-    fig.tight_layout()
-    _save(fig, "fig_rho_reduction.png")
+    if __package__:
+        from .generate_rho_reduction import render_rho_reduction
+    else:
+        from generate_rho_reduction import render_rho_reduction
+    render_rho_reduction(os.path.join(FIG_DIR, "fig_rho_reduction.png"))
 
 
 def fig_tradeoff():
@@ -209,8 +147,6 @@ def fig_budget():
     Ks = d["K_values"]
     methods = ["Greedy-TopK", "Window-K", "Local-KHop", "Oracle-K", "WM-SAR"]
 
-    wmsar_const = d["wmsar_default"]
-
     colors  = {"Greedy-TopK": C_BLUE,   "Window-K": C_ORANGE,
                "Local-KHop": C_GREEN,  "Oracle-K": C_ORACLE,
                "WM-SAR":     C_WMSAR}
@@ -219,13 +155,10 @@ def fig_budget():
 
     fig, ax = plt.subplots(figsize=(6.0, 3.5))
     for m in methods:
-        if m == "WM-SAR":
-            ax.axhline(wmsar_const, color=C_WMSAR, linewidth=2.0,
-                       linestyle="-", zorder=5, label=f"WM-SAR (no budget)  ρ-red={wmsar_const:.2f}")
-            continue
         ys = [d["results"][str(K)][m]["mean_rho_reduction"] for K in Ks]
         ax.plot(Ks, ys, marker=markers[m], color=colors[m],
-                linewidth=1.5, markersize=6, label=m, zorder=4)
+                linewidth=2.0 if m == "WM-SAR" else 1.5,
+                markersize=6, label="ReCore" if m == "WM-SAR" else m, zorder=4)
 
     ax.axhline(d["oracle_full"], color=C_GRAY, linewidth=0.8,
                linestyle=":", zorder=2,
@@ -341,7 +274,8 @@ def _plot_llm_panel(ax, d_llm, with_legend=True):
                 color=C_WMSAR if is_wmsar else C_DARK,
                 fontweight="bold" if is_wmsar else "normal")
 
-        ax.text(1.32, y[i], f"{int(tokens[i])}", va="center", fontsize=7,
+        token_text = f"{int(tokens[i])}" if tokens[i] is not None else "n/a"
+        ax.text(1.32, y[i], token_text, va="center", fontsize=7,
                 color=C_WMSAR if is_wmsar else C_GRAY,
                 fontweight="bold" if is_wmsar else "normal")
 
@@ -378,29 +312,33 @@ def _plot_multiapi_panel(ax_heat, ax_line, d_multi):
     methods = [m for m in methods_in
                if all(m in d_multi["results"][k] for k in model_keys)]
     M, N = len(methods), len(model_keys)
-    data = np.zeros((M, N))
+    data = np.full((M, N), np.nan)
     for i, m in enumerate(methods):
         for j, k in enumerate(model_keys):
-            data[i, j] = d_multi["results"][k][m]["rec_exact"]
+            value = d_multi["results"][k][m]["rec_exact"]
+            if value is not None:
+                data[i, j] = value
 
     from matplotlib.colors import LinearSegmentedColormap
     cmap = LinearSegmentedColormap.from_list(
         "wmsar_blue", ["#FFFFFF", "#DEEBF7", "#2166AC"], N=256)
-    vmax = max(0.6, float(data.max()) + 0.02)
-    ax_heat.imshow(data, cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
+    finite_values = data[np.isfinite(data)]
+    vmax = max(0.6, float(finite_values.max()) + 0.02) if finite_values.size else 0.6
+    ax_heat.imshow(np.ma.masked_invalid(data), cmap=cmap, vmin=0, vmax=vmax, aspect="auto")
     ax_heat.set_xticks(range(N))
     ax_heat.set_xticklabels([short_model.get(k, k) for k in model_keys], fontsize=7.5)
     ax_heat.set_yticks(range(M))
     ax_heat.set_yticklabels(methods, fontsize=8)
     ax_heat.grid(False)
-    ax_heat.set_title(f"(b) Rec-Exact heatmap (n={d_multi['n']} per cell)",
+    ax_heat.set_title(f"(b) Rec-Exact heatmap (up to {d_multi['n']} attempts per cell)",
                       fontsize=10, pad=4)
     for i in range(M):
         for j in range(N):
             v = data[i, j]
             tc = "white" if v > 0.5 * vmax else "#333333"
             fw = "bold" if methods[i] == "WM-SAR" else "normal"
-            ax_heat.text(j, i, f"{v:.2f}", ha="center", va="center",
+            value_text = f"{v:.2f}" if np.isfinite(v) else "n/a"
+            ax_heat.text(j, i, value_text, ha="center", va="center",
                          fontsize=7.5, color=tc, fontweight=fw)
 
     if "WM-SAR" in methods:
